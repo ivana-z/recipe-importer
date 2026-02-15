@@ -35,6 +35,7 @@ recipe-importer import --url "https://www.seriouseats.com/some-recipe"
 # Import from photo(s)
 recipe-importer import --image photo.jpg
 recipe-importer import --image page1.jpg --image page2.jpg
+It supports .jpg, .jpeg, .png, .gif, and .webp formats. Paths can be relative, absolute, or use ~ for your home directory (e.g., ~/Downloads/recipe.jpeg).
 
 # Import and sync to Paprika cloud
 recipe-importer import --url "https://example.com/recipe" --sync
