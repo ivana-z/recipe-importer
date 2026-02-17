@@ -15,7 +15,7 @@ export function useImport() {
       setRecipe(result.recipe);
       setState("preview");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Import failed");
+      setError("Whoops! Try again.");
       setState("error");
     }
   }, []);
@@ -28,7 +28,7 @@ export function useImport() {
       setRecipe(result.recipe);
       setState("preview");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Import failed");
+      setError("Whoops! Try again.");
       setState("error");
     }
   }, []);
@@ -48,7 +48,7 @@ export function useImport() {
           setState("success");
         }
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Sync failed");
+        setError("Whoops! Try again.");
         setState("error");
       }
     },

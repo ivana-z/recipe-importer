@@ -27,7 +27,7 @@ async def import_url(req: ImportUrlRequest):
         result = await import_from_url(req.url)
     except Exception as e:
         logger.exception("URL import failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Import failed")
 
     recipe = RecipeResponse(**result)
 
@@ -74,7 +74,7 @@ async def import_images(
         result = await import_from_images(image_files)
     except Exception as e:
         logger.exception("Image import failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Import failed")
 
     recipe = RecipeResponse(**result)
 
@@ -109,7 +109,7 @@ async def list_categories():
         cats = await get_categories()
     except Exception as e:
         logger.exception("Failed to fetch categories")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to fetch categories")
 
     return CategoriesResponse(
         categories=[CategoryItem(**c) for c in cats]
@@ -135,6 +135,6 @@ async def sync(req: SyncRequest):
         )
     except Exception as e:
         logger.exception("Sync failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Sync failed")
 
     return SyncResult(success=True, name=final_name)
