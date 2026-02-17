@@ -1,24 +1,73 @@
-"""Claude API call for recipe formatting with retry logic."""
+"""Claude API call for recipe formatting with retry logic.
+
+Includes system prompt and message builders (merged from prompts.py).
+"""
 
 import json
 import logging
-import sys
+import os
 import time
 
 import anthropic
-
-from .prompts import (
-    SYSTEM_PROMPT,
-    build_image_message,
-    build_raw_html_message,
-    build_url_message,
-)
 
 logger = logging.getLogger(__name__)
 
 MODEL = "claude-sonnet-4-5-20250929"
 MAX_RETRIES = 3
 BASE_DELAY = 2  # seconds
+
+SYSTEM_PROMPT = """\
+You are a recipe editor. You receive recipe data (from a URL scrape or photos) and \
+reformat it according to strict rules. Return ONLY valid JSON with these fields:
+- "name": recipe title
+- "ingredients": formatted ingredients text
+- "directions": formatted directions text
+- "prep_time": preparation time (e.g. "15 min") or ""
+- "cook_time": cooking time (e.g. "30 min") or ""
+- "servings": servings (e.g. "4 servings") or ""
+- "notes": any additional notes or ""
+
+## Ingredient Formatting Rules
+
+- Each ingredient on its own line, no bullet points or numbering
+- Format: quantity first, then ingredient name
+- For multi-part recipes (marinade, sauce, dressing, etc.): list ingredients under \
+each part title on its own line
+- Abbreviations: use "tbsp" for tablespoons, "tsp" for teaspoons
+- Show only ONE unit of measurement and quantity per ingredient
+- Do NOT convert tbsp/tsp quantities to metric, EXCEPT for butter — always convert \
+butter to grams
+- Cups: keep cups as-is by default. ONLY convert cups to ml when the ingredient is \
+a pourable liquid (water, milk, broth, stock, cream, juice, oil, wine, vinegar, \
+soy sauce, etc.). Everything else stays in cups — this includes flour, sugar, herbs, \
+leaves, oats, rice, nuts, cheese, breadcrumbs, chocolate chips, diced vegetables, \
+and any other solid, dry, or non-pourable ingredient.
+- Convert all other imperial units (oz, lb, fl oz, pints, quarts, gallons) to metric:
+  - Under 1 L / 1 kg: convert to millilitres (ml) and grams (g), round UP to the \
+nearest 5
+  - Over 1 L / 1 kg: convert to litres (L) and kilograms (kg), round UP to the \
+nearest 0.05
+- Length: convert inches to metric. If the converted value is 20 mm or less, show \
+in mm rounded UP to the nearest whole number. If over 20 mm, show in cm rounded UP \
+to the nearest 0.5.
+- Temperatures: Celsius only (°C). Delete any gas mark or Fahrenheit references. \
+If only Fahrenheit is given, convert to Celsius.
+
+## Direction Formatting Rules
+
+- Structure into chapters with bold titles (e.g. **Soaking**, **Preparation**, \
+**Cooking**)
+- Convert any amounts/temperatures in directions using the same rules as ingredients
+- Bold each ingredient name when it is first mentioned in a step, and include its \
+quantity (e.g. "Add **200g flour** and mix")
+
+## General
+
+- Preserve the original recipe's intent and proportions
+- If information is missing (prep_time, cook_time, servings), use an empty string
+- Do not invent or add ingredients/steps that are not in the original
+- Return ONLY the JSON object, no markdown fencing or extra text
+"""
 
 
 def format_recipe(
@@ -38,13 +87,13 @@ def format_recipe(
 
     # Build the appropriate user message
     if images:
-        user_content = build_image_message(images)
+        user_content = _build_image_message(images)
     elif recipe_data and "raw_html" in recipe_data:
-        user_content = build_raw_html_message(
+        user_content = _build_raw_html_message(
             recipe_data["raw_html"], recipe_data.get("url", source_url or "unknown")
         )
     elif recipe_data:
-        user_content = build_url_message(recipe_data)
+        user_content = _build_url_message(recipe_data)
     else:
         raise ValueError("Must provide either recipe_data or images")
 
@@ -81,8 +130,6 @@ def format_recipe(
 
 def _get_client() -> anthropic.Anthropic:
     """Create an Anthropic client, checking for API key."""
-    import os
-
     if not os.environ.get("ANTHROPIC_API_KEY"):
         raise RuntimeError(
             "ANTHROPIC_API_KEY not found. Set it in .env or as an environment variable."
@@ -156,17 +203,49 @@ def _parse_response(text: str) -> dict:
     }
 
 
-def _print_api_key_error():
-    """Print a helpful error message for missing API key."""
-    print(
-        "\nError: ANTHROPIC_API_KEY not found.\n"
-        "\n"
-        "To set up your API key:\n"
-        "  1. Get your key from https://console.anthropic.com/\n"
-        "  2. Create a .env file in the project root:\n"
-        "     ANTHROPIC_API_KEY=sk-ant-...\n"
-        "\n"
-        "Or set the environment variable directly:\n"
-        "  export ANTHROPIC_API_KEY=sk-ant-...\n",
-        file=sys.stderr,
-    )
+def _build_url_message(recipe_data: dict) -> list:
+    """Build Claude user message for a URL-scraped structured recipe."""
+    parts = [f"Recipe: {recipe_data.get('title', 'Unknown')}"]
+
+    if recipe_data.get("ingredients"):
+        parts.append("\nIngredients:\n" + "\n".join(recipe_data["ingredients"]))
+
+    if recipe_data.get("directions"):
+        parts.append("\nDirections:\n" + "\n".join(recipe_data["directions"]))
+
+    for field in ("prep_time", "cook_time", "total_time", "servings"):
+        if recipe_data.get(field):
+            parts.append(f"\n{field.replace('_', ' ').title()}: {recipe_data[field]}")
+
+    text = "\n".join(parts)
+    return [{"type": "text", "text": f"Please reformat this recipe:\n\n{text}"}]
+
+
+def _build_image_message(images: list[dict]) -> list:
+    """Build Claude user message for image-based recipe(s)."""
+    content = []
+    for img in images:
+        content.append({
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": img["media_type"],
+                "data": img["data"],
+            },
+        })
+    content.append({
+        "type": "text",
+        "text": "Please extract and reformat the recipe from the image(s) above.",
+    })
+    return content
+
+
+def _build_raw_html_message(html: str, url: str) -> list:
+    """Build Claude user message for fallback raw/extracted HTML content."""
+    return [{
+        "type": "text",
+        "text": (
+            f"I extracted the following content from {url}. "
+            f"Please find and reformat the recipe:\n\n{html}"
+        ),
+    }]

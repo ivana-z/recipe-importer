@@ -23,12 +23,19 @@ each part title on its own line
 - Show only ONE unit of measurement and quantity per ingredient
 - Do NOT convert tbsp/tsp quantities to metric, EXCEPT for butter — always convert \
 butter to grams
-- Non-liquid ingredients: keep quantity in cups if originally in cups
-- Convert all other imperial units to metric:
+- Cups: keep cups as-is by default. ONLY convert cups to ml when the ingredient is \
+a pourable liquid (water, milk, broth, stock, cream, juice, oil, wine, vinegar, \
+soy sauce, etc.). Everything else stays in cups — this includes flour, sugar, herbs, \
+leaves, oats, rice, nuts, cheese, breadcrumbs, chocolate chips, diced vegetables, \
+and any other solid, dry, or non-pourable ingredient.
+- Convert all other imperial units (oz, lb, fl oz, pints, quarts, gallons) to metric:
   - Under 1 L / 1 kg: convert to millilitres (ml) and grams (g), round UP to the \
 nearest 5
   - Over 1 L / 1 kg: convert to litres (L) and kilograms (kg), round UP to the \
 nearest 0.05
+- Length: convert inches to metric. If the converted value is 20 mm or less, show \
+in mm rounded UP to the nearest whole number. If over 20 mm, show in cm rounded UP \
+to the nearest 0.5.
 - Temperatures: Celsius only (°C). Delete any gas mark or Fahrenheit references. \
 If only Fahrenheit is given, convert to Celsius.
 

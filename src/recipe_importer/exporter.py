@@ -26,7 +26,7 @@ def export_recipe(
     output_dir = output_dir or DEFAULT_OUTPUT_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    paprika_data = _build_paprika_json(recipe, source_url, source_name, photo_data, image_url)
+    paprika_data = build_paprika_json(recipe, source_url, source_name, photo_data, image_url)
     filename = _unique_filename(output_dir, recipe["name"])
     output_path = output_dir / filename
 
@@ -37,12 +37,13 @@ def export_recipe(
     return output_path
 
 
-def _build_paprika_json(
+def build_paprika_json(
     recipe: dict,
-    source_url: str | None,
-    source_name: str | None,
-    photo_data: str | None,
-    image_url: str | None,
+    source_url: str | None = None,
+    source_name: str | None = None,
+    photo_data: str | None = None,
+    image_url: str | None = None,
+    categories: list[str] | None = None,
 ) -> dict:
     """Build the full Paprika JSON schema."""
     uid = str(uuid.uuid4())
@@ -72,7 +73,7 @@ def _build_paprika_json(
         "photo_url": "",
         "photo_data": photo_data or "",
         "scale": "",
-        "categories": [],
+        "categories": categories or [],
         "rating": 0,
         "in_trash": False,
         "is_pinned": False,

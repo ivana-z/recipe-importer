@@ -26,8 +26,10 @@ class PaprikaClient:
         email = os.environ.get("PAPRIKA_EMAIL")
         password = os.environ.get("PAPRIKA_PASSWORD")
         if not email or not password:
-            _print_credentials_error()
-            sys.exit(1)
+            raise RuntimeError(
+                "Paprika credentials not found. Set PAPRIKA_EMAIL and "
+                "PAPRIKA_PASSWORD in .env or as environment variables."
+            )
         self._auth = (email, password)
 
     def get_existing_names(self) -> set[str]:
