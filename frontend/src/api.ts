@@ -1,7 +1,12 @@
 import type { CategoriesResponse, ImportResult, Recipe, SyncResult } from "./types";
 
+export interface CredentialsStatus {
+  has_credentials: boolean;
+  paprika_email: string;
+}
+
 function getToken(): string {
-  return localStorage.getItem("app_secret") || "";
+  return localStorage.getItem("jwt_token") || "";
 }
 
 async function apiFetch<T>(
@@ -12,7 +17,7 @@ async function apiFetch<T>(
   const res = await fetch(path, {
     ...options,
     headers: {
-      Authorization: `Bearer ${token}`,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
   });
@@ -22,6 +27,12 @@ async function apiFetch<T>(
     throw new Error(body || `Request failed: ${res.status}`);
   }
 
+  return res.json();
+}
+
+export async function getGoogleLoginUrl(): Promise<{ auth_url: string; state: string }> {
+  const res = await fetch("/api/auth/login");
+  if (!res.ok) throw new Error("Failed to get login URL");
   return res.json();
 }
 
@@ -61,5 +72,20 @@ export async function syncRecipe(recipe: Recipe & { categories: string[] }): Pro
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(recipe),
+  });
+}
+
+export async function fetchCredentialStatus(): Promise<CredentialsStatus> {
+  return apiFetch<CredentialsStatus>("/api/me/credentials");
+}
+
+export async function saveCredentials(
+  paprika_email: string,
+  paprika_password: string
+): Promise<CredentialsStatus> {
+  return apiFetch<CredentialsStatus>("/api/me/credentials", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ paprika_email, paprika_password }),
   });
 }

@@ -60,3 +60,13 @@ class CategoryItem(BaseModel):
 
 class CategoriesResponse(BaseModel):
     categories: list[CategoryItem]
+
+
+class CredentialsRequest(BaseModel):
+    paprika_email: str
+    paprika_password: str  # plaintext in transit (HTTPS), Fernet-encrypted at rest
+
+
+class CredentialsStatus(BaseModel):
+    has_credentials: bool
+    paprika_email: str = ""

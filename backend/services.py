@@ -72,12 +72,15 @@ async def import_from_images(image_files: list[tuple[str, bytes]]) -> dict:
     }
 
 
-async def get_categories() -> list[dict]:
+async def get_categories(
+    paprika_email: str | None = None,
+    paprika_password_enc: str | None = None,
+) -> list[dict]:
     """Fetch categories from Paprika API.
 
     Returns a list of {name, uid, children} dicts representing the category hierarchy.
     """
-    client = await asyncio.to_thread(PaprikaClient)
+    client = await asyncio.to_thread(PaprikaClient, paprika_email, paprika_password_enc)
 
     import httpx
 
@@ -132,6 +135,8 @@ async def sync_recipe(
     notes: str,
     photo_data: str,
     image_url: str,
+    paprika_email: str | None = None,
+    paprika_password_enc: str | None = None,
 ) -> str:
     """Build Paprika JSON and upload.
 
@@ -156,8 +161,7 @@ async def sync_recipe(
         categories=categories,
     )
 
-    await asyncio.to_thread(
-        PaprikaClient().upload_recipe, paprika_data
-    )
+    client = PaprikaClient(paprika_email, paprika_password_enc)
+    await asyncio.to_thread(client.upload_recipe, paprika_data)
 
     return name

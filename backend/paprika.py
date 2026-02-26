@@ -72,17 +72,22 @@ class PaprikaClient:
     """Client for the Paprika 3 cloud sync API (v1).
 
     Uses HTTP Basic Auth with Paprika account email/password.
+    Accepts explicit credentials (from per-user DB record) or falls back to env vars.
     """
 
-    def __init__(self):
-        email = os.environ.get("PAPRIKA_EMAIL")
-        password = os.environ.get("PAPRIKA_PASSWORD")
-        if not email or not password:
-            raise RuntimeError(
-                "Paprika credentials not found. Set PAPRIKA_EMAIL and "
-                "PAPRIKA_PASSWORD in .env or as environment variables."
-            )
-        self._auth = (email, password)
+    def __init__(self, email: str | None = None, password_enc: str | None = None):
+        if email and password_enc:
+            from .oauth import decrypt_password
+            self._auth = (email, decrypt_password(password_enc))
+        else:
+            env_email = os.environ.get("PAPRIKA_EMAIL")
+            env_password = os.environ.get("PAPRIKA_PASSWORD")
+            if not env_email or not env_password:
+                raise RuntimeError(
+                    "Paprika credentials not found. Set PAPRIKA_EMAIL and "
+                    "PAPRIKA_PASSWORD in .env or as environment variables."
+                )
+            self._auth = (env_email, env_password)
 
     def upload_recipe(self, recipe_data: dict) -> None:
         """Upload a recipe to Paprika cloud.

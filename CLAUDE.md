@@ -37,7 +37,7 @@ docker compose up --build
 ## Setup
 Copy `.env.example` to `.env` and add your keys:
 ```
-ANTHROPIC_API_KEY=sk-ant-...
+GEMINI_API_KEY=AIza...       # From Google AI Studio
 PAPRIKA_EMAIL=...        # For --sync and web app
 PAPRIKA_PASSWORD=...     # For --sync and web app
 APP_SECRET=...           # For web app auth
@@ -51,7 +51,7 @@ src/recipe_importer/
 ├── cli.py            # Click CLI entry point
 ├── scraper.py        # URL fetch + recipe-scrapers + trafilatura fallback
 ├── image_reader.py   # Image loading + base64 encoding
-├── formatter.py      # Claude API call + JSON response parsing
+├── formatter.py      # Gemini API call + JSON response parsing
 ├── exporter.py       # .paprikarecipe file creation (gzipped JSON)
 ├── prompts.py        # System prompt with formatting rules
 └── paprika_api.py    # Paprika 3 cloud sync client
@@ -75,12 +75,12 @@ frontend/              # React + Vite + TypeScript + shadcn/ui PWA
 
 ### Pipeline
 1. **Input**: URL → `scraper.py` or images → `image_reader.py`
-2. **Format**: `formatter.py` sends to Claude with rules from `prompts.py`
+2. **Format**: `formatter.py` sends to Gemini with rules from `prompts.py`
 3. **Export**: `exporter.py` creates gzipped `.paprikarecipe` in `~/paprika_recipes/`
 4. **Sync** (optional): `paprika_api.py` uploads to Paprika cloud
 
 ### Key details
-- Claude model: `claude-sonnet-4-5-20250929`
+- Gemini model: `gemini-2.5-flash`
 - Output: `~/paprika_recipes/` (default), override with `--output`
 - Duplicate handling: auto-rename with `-2`, `-3` suffix
 - API retries: 3 attempts with exponential backoff

@@ -1,11 +1,13 @@
-"""Claude API call for recipe formatting with retry logic."""
+"""Gemini API call for recipe formatting with retry logic."""
 
+import base64
 import json
 import logging
-import sys
+import os
 import time
 
-import anthropic
+from google import genai
+from google.genai import types
 
 from .prompts import (
     SYSTEM_PROMPT,
@@ -16,7 +18,7 @@ from .prompts import (
 
 logger = logging.getLogger(__name__)
 
-MODEL = "claude-sonnet-4-5-20250929"
+MODEL = "gemini-2.5-flash"
 MAX_RETRIES = 3
 BASE_DELAY = 2  # seconds
 
@@ -26,7 +28,7 @@ def format_recipe(
     images: list[dict] | None = None,
     source_url: str | None = None,
 ) -> dict:
-    """Format a recipe using Claude.
+    """Format a recipe using Gemini.
 
     Accepts either structured recipe_data (from URL scraping),
     images (from photo input), or raw HTML fallback data.
@@ -36,38 +38,33 @@ def format_recipe(
     """
     client = _get_client()
 
-    # Build the appropriate user message
     if images:
-        user_content = build_image_message(images)
+        contents = _image_msg_to_parts(build_image_message(images))
     elif recipe_data and "raw_html" in recipe_data:
-        user_content = build_raw_html_message(
+        contents = build_raw_html_message(
             recipe_data["raw_html"], recipe_data.get("url", source_url or "unknown")
         )
     elif recipe_data:
-        user_content = build_url_message(recipe_data)
+        contents = build_url_message(recipe_data)
     else:
         raise ValueError("Must provide either recipe_data or images")
 
-    # Call Claude with retries
     last_error = None
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            logger.debug("Claude API call attempt %d/%d", attempt, MAX_RETRIES)
-            response = client.messages.create(
+            logger.debug("Gemini API call attempt %d/%d", attempt, MAX_RETRIES)
+            response = client.models.generate_content(
                 model=MODEL,
-                max_tokens=4096,
-                system=SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": user_content}],
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    response_mime_type="application/json",
+                ),
+                contents=contents,
             )
-            text = response.content[0].text
-            logger.debug("Claude response: %s", text)
+            text = response.text
+            logger.debug("Gemini response: %s", text)
             return _parse_response(text)
-        except anthropic.AuthenticationError:
-            raise RuntimeError(
-                "ANTHROPIC_API_KEY is invalid. Check your API key at "
-                "https://console.anthropic.com/"
-            )
-        except anthropic.APIError as e:
+        except Exception as e:
             last_error = e
             if attempt < MAX_RETRIES:
                 delay = BASE_DELAY * (2 ** (attempt - 1))
@@ -75,75 +72,48 @@ def format_recipe(
                 time.sleep(delay)
             else:
                 raise RuntimeError(
-                    f"Claude API call failed after {MAX_RETRIES} attempts: {e}"
+                    f"Gemini API call failed after {MAX_RETRIES} attempts: {e}"
                 ) from e
 
 
-def _get_client() -> anthropic.Anthropic:
-    """Create an Anthropic client, checking for API key."""
-    import os
-
-    if not os.environ.get("ANTHROPIC_API_KEY"):
+def _get_client() -> genai.Client:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
         raise RuntimeError(
-            "ANTHROPIC_API_KEY not found. Set it in .env or as an environment variable."
+            "GEMINI_API_KEY not found. Set it in .env or as an environment variable."
         )
-    return anthropic.Anthropic()
+    return genai.Client(api_key=api_key)
 
 
-def _fix_json_newlines(text: str) -> str:
-    """Escape literal newlines that appear inside JSON string values."""
-    result = []
-    in_string = False
-    escape_next = False
-    for ch in text:
-        if escape_next:
-            result.append(ch)
-            escape_next = False
-            continue
-        if ch == "\\":
-            result.append(ch)
-            escape_next = True
-            continue
-        if ch == '"':
-            in_string = not in_string
-            result.append(ch)
-            continue
-        if in_string and ch == "\n":
-            result.append("\\n")
-            continue
-        result.append(ch)
-    return "".join(result)
+def _image_msg_to_parts(msg: list) -> list:
+    """Convert neutral image message format to Gemini Parts."""
+    parts = []
+    for item in msg:
+        if item["type"] == "image":
+            parts.append(
+                types.Part.from_bytes(
+                    data=base64.b64decode(item["data"]),
+                    mime_type=item["media_type"],
+                )
+            )
+        elif item["type"] == "text":
+            parts.append(types.Part.from_text(text=item["text"]))
+    return parts
 
 
 def _parse_response(text: str) -> dict:
-    """Parse Claude's JSON response into a recipe dict."""
-    # Strip markdown code fences if present
-    cleaned = text.strip()
-    if cleaned.startswith("```"):
-        lines = cleaned.split("\n")
-        # Remove first and last lines (fences)
-        lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        cleaned = "\n".join(lines)
-
+    """Parse Gemini's JSON response into a recipe dict."""
     try:
-        data = json.loads(cleaned)
-    except json.JSONDecodeError:
-        # Claude sometimes outputs literal newlines inside JSON string values.
-        # Fix by escaping newlines that appear inside quoted strings.
-        fixed = _fix_json_newlines(cleaned)
-        try:
-            data = json.loads(fixed)
-        except json.JSONDecodeError as e:
-            raise RuntimeError(
-                f"Failed to parse Claude response as JSON: {e}\n{text}"
-            )
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise RuntimeError(
+            f"Failed to parse Gemini response as JSON: {e}\n{text}"
+        )
 
     required_fields = ["name", "ingredients", "directions"]
     for field in required_fields:
         if field not in data:
-            raise RuntimeError(f"Claude response missing required field: {field}")
+            raise RuntimeError(f"Gemini response missing required field: {field}")
 
     return {
         "name": data["name"],
@@ -154,19 +124,3 @@ def _parse_response(text: str) -> dict:
         "servings": data.get("servings", ""),
         "notes": data.get("notes", ""),
     }
-
-
-def _print_api_key_error():
-    """Print a helpful error message for missing API key."""
-    print(
-        "\nError: ANTHROPIC_API_KEY not found.\n"
-        "\n"
-        "To set up your API key:\n"
-        "  1. Get your key from https://console.anthropic.com/\n"
-        "  2. Create a .env file in the project root:\n"
-        "     ANTHROPIC_API_KEY=sk-ant-...\n"
-        "\n"
-        "Or set the environment variable directly:\n"
-        "  export ANTHROPIC_API_KEY=sk-ant-...\n",
-        file=sys.stderr,
-    )

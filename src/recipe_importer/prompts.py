@@ -56,8 +56,21 @@ quantity (e.g. "Add **200g flour** and mix")
 """
 
 
-def build_url_message(recipe_data: dict) -> list:
-    """Build Claude user message for a URL-scraped structured recipe."""
+_RULES_REMINDER = (
+    "Apply ALL formatting rules from your instructions without exception:\n"
+    "- Ingredients: one per line, quantity first, no bullets, correct abbreviations "
+    "(tbsp/tsp), group multi-part recipes under section titles\n"
+    "- Units: convert butter to grams; pourable liquids cups→ml; all other imperial "
+    "(oz, lb, fl oz, pints, quarts, gallons) to metric (g/ml under 1kg/L, kg/L over); "
+    "inches to mm/cm; Fahrenheit to Celsius only\n"
+    "- Directions: use bold chapter titles (e.g. **Preparation**, **Cooking**); bold "
+    "each ingredient name on first mention with its quantity\n"
+    "- Return ONLY the JSON object, no markdown fencing or extra text"
+)
+
+
+def build_url_message(recipe_data: dict) -> str:
+    """Build user message for a URL-scraped structured recipe."""
     parts = [f"Recipe: {recipe_data.get('title', 'Unknown')}"]
 
     if recipe_data.get("ingredients"):
@@ -71,34 +84,26 @@ def build_url_message(recipe_data: dict) -> list:
             parts.append(f"\n{field.replace('_', ' ').title()}: {recipe_data[field]}")
 
     text = "\n".join(parts)
-    return [{"type": "text", "text": f"Please reformat this recipe:\n\n{text}"}]
+    return f"Please reformat this recipe:\n\n{text}\n\n{_RULES_REMINDER}"
 
 
 def build_image_message(images: list[dict]) -> list:
-    """Build Claude user message for image-based recipe(s)."""
-    content = []
-    for img in images:
-        content.append({
-            "type": "image",
-            "source": {
-                "type": "base64",
-                "media_type": img["media_type"],
-                "data": img["data"],
-            },
-        })
+    """Build user message for image-based recipe(s).
+
+    Returns a list of dicts: image items followed by a text item.
+    Each image dict has: type, media_type, data (base64 string).
+    """
+    content = list(images)
     content.append({
         "type": "text",
-        "text": "Please extract and reformat the recipe from the image(s) above.",
+        "text": f"Please extract and reformat the recipe from the image(s) above.\n\n{_RULES_REMINDER}",
     })
     return content
 
 
-def build_raw_html_message(html: str, url: str) -> list:
-    """Build Claude user message for fallback raw/extracted HTML content."""
-    return [{
-        "type": "text",
-        "text": (
-            f"I extracted the following content from {url}. "
-            f"Please find and reformat the recipe:\n\n{html}"
-        ),
-    }]
+def build_raw_html_message(html: str, url: str) -> str:
+    """Build user message for fallback raw/extracted HTML content."""
+    return (
+        f"I extracted the following content from {url}. "
+        f"Please find and reformat the recipe:\n\n{html}\n\n{_RULES_REMINDER}"
+    )

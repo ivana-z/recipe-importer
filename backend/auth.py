@@ -1,27 +1,35 @@
-"""Bearer token authentication for the web API."""
+"""JWT-based authentication for the web API."""
 
-import os
-
+import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.orm import Session
+
+from .database import get_db
+from .models import User
+from .oauth import decode_jwt
 
 _security = HTTPBearer()
 
 
-def get_app_secret() -> str:
-    secret = os.environ.get("APP_SECRET", "")
-    if not secret:
-        raise RuntimeError("APP_SECRET not set in environment")
-    return secret
-
-
-def verify_token(
+def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(_security),
-) -> str:
-    """Dependency that validates the Bearer token against APP_SECRET."""
-    if credentials.credentials != get_app_secret():
+    db: Session = Depends(get_db),
+) -> User:
+    """Dependency: decode Bearer JWT and return the matching User row."""
+    try:
+        payload = decode_jwt(credentials.credentials)
+        user_id = int(payload["sub"])
+    except (jwt.PyJWTError, KeyError, ValueError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication token",
+            detail="Invalid or expired token",
         )
-    return credentials.credentials
+
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+    return user
