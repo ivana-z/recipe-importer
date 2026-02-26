@@ -12,7 +12,7 @@ export default defineConfig({
       registerType: "autoUpdate",
       manifest: {
         name: "Recipe Importer",
-        short_name: "Recipes",
+        short_name: "Recipe Importer",
         description: "Fast recipe capture for Paprika",
         theme_color: "#1a1a1a",
         background_color: "#1a1a1a",
