@@ -101,30 +101,24 @@ def format_recipe(
 
     if images:
         contents = _image_msg_to_parts(_build_image_message(images))
-        use_thinking = True
     elif recipe_data and "raw_html" in recipe_data:
         contents = _build_raw_html_message(
             recipe_data["raw_html"], recipe_data.get("url", source_url or "unknown")
         )
-        use_thinking = True
     elif recipe_data:
         contents = _build_url_message(recipe_data)
-        use_thinking = False
     else:
         raise ValueError("Must provide either recipe_data or images")
-
-    thinking_config = None if use_thinking else types.ThinkingConfig(thinking_budget=0)
 
     last_error = None
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            logger.debug("Gemini API call attempt %d/%d (thinking=%s)", attempt, MAX_RETRIES, use_thinking)
+            logger.debug("Gemini API call attempt %d/%d", attempt, MAX_RETRIES)
             response = client.models.generate_content(
                 model=MODEL,
                 config=types.GenerateContentConfig(
                     system_instruction=SYSTEM_PROMPT,
                     response_mime_type="application/json",
-                    thinking_config=thinking_config,
                 ),
                 contents=contents,
             )
