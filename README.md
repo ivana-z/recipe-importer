@@ -9,7 +9,7 @@ A tool that imports recipes from URLs or photos, reformats them using Gemini, an
 - **Smart formatting** — converts imperial to metric, structures directions into chapters, bolds ingredients on first mention
 - **Paprika sync** — uploads recipes directly to Paprika 3 cloud
 - **Android share sheet** — share a URL from Chrome directly to the app (PWA)
-- **Duplicate handling** — auto-renames when duplicates exist
+- **Duplicate handling** — auto-renames local `.paprikarecipe` files if a file with the same name already exists
 
 ## Web App
 
