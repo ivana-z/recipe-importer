@@ -41,14 +41,16 @@ async function dataUrlToFile(dataUrl: string, name: string): Promise<File> {
 export function ImportForm({
   onSubmitUrl,
   onSubmitImages,
+  initialUrl = "",
 }: {
   onSubmitUrl: (url: string) => void;
   onSubmitImages: (files: File[]) => void;
+  initialUrl?: string;
 }) {
   const [tab, setTab] = useState<Tab>(
-    () => (sessionStorage.getItem(TAB_KEY) as Tab) || "url"
+    () => initialUrl ? "url" : (sessionStorage.getItem(TAB_KEY) as Tab) || "url"
   );
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(initialUrl);
   const [images, setImages] = useState<StoredImage[]>(loadStoredImages);
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);

@@ -31,19 +31,32 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const { state, recipe, error, submitUrl, submitImages, sync, reset } = useImport();
 
-  // Handle OAuth callback: extract ?token= from URL and store it
+  // Read shared URL from Web Share Target (/share?url=...) or OAuth callback (?token=...)
+  const [sharedUrl] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const candidate = params.get("url") || params.get("text") || "";
+    return candidate.startsWith("http") ? candidate : "";
+  });
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get("token");
+    const cleanUrl = new URL(window.location.href);
+
     if (token) {
       localStorage.setItem("jwt_token", token);
-      // Remove token from URL without reloading
-      const url = new URL(window.location.href);
-      url.searchParams.delete("token");
-      window.history.replaceState({}, "", url.toString());
+      cleanUrl.searchParams.delete("token");
       setAuthed(true);
     }
-  }, []);
+    if (sharedUrl) {
+      cleanUrl.searchParams.delete("url");
+      cleanUrl.searchParams.delete("text");
+      cleanUrl.searchParams.delete("title");
+    }
+    if (token || sharedUrl) {
+      window.history.replaceState({}, "", cleanUrl.toString());
+    }
+  }, [sharedUrl]);
 
   if (!authed) {
     return <Login />;
@@ -94,7 +107,7 @@ function App() {
 
       {(state === "idle" || state === "loading") && (
         <>
-          <ImportForm onSubmitUrl={submitUrl} onSubmitImages={submitImages} />
+          <ImportForm onSubmitUrl={submitUrl} onSubmitImages={submitImages} initialUrl={sharedUrl} />
           {state === "loading" && (
             <div className="mt-6 px-6">
               <StatusBar state={state} error={error} />

@@ -31,6 +31,15 @@ export default defineConfig({
             purpose: "any maskable",
           },
         ],
+        share_target: {
+          action: "/share",
+          method: "GET",
+          params: {
+            url: "url",
+            text: "text",
+            title: "title",
+          },
+        },
       },
       workbox: {
         navigateFallbackDenylist: [/^\/api\//],
