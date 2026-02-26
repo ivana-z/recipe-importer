@@ -18,8 +18,6 @@ class RecipeResponse(BaseModel):
     notes: str = ""
     source_url: str = ""
     source: str = ""
-    photo_data: str = ""
-    image_url: str = ""
 
 
 class ImportResult(BaseModel):
@@ -38,8 +36,6 @@ class SyncRequest(BaseModel):
     cook_time: str = ""
     servings: str = ""
     notes: str = ""
-    photo_data: str = ""
-    image_url: str = ""
 
 
 class SyncResult(BaseModel):

@@ -1,6 +1,5 @@
 """URL fetching and recipe scraping with recipe-scrapers + trafilatura fallback."""
 
-import base64
 import logging
 
 import httpx
@@ -24,11 +23,7 @@ def scrape_url(url: str) -> dict:
     Tries recipe-scrapers first for structured data.
     Falls back to trafilatura for raw content extraction.
 
-    Uses a single HTTP client so the image download shares
-    cookies/session from the initial page fetch.
-
     Returns a dict with either structured recipe fields or {"raw_html": ...}.
-    May include "photo_data" (base64) if a photo was found.
     """
     with httpx.Client(
         timeout=_TIMEOUT,
@@ -41,9 +36,6 @@ def scrape_url(url: str) -> dict:
         try:
             recipe_data = _extract_structured(html, url)
             logger.debug("Structured extraction succeeded for %s", url)
-            photo_data = _download_photo(client, recipe_data.get("image"))
-            if photo_data:
-                recipe_data["photo_data"] = photo_data
             return recipe_data
         except Exception as e:
             logger.debug("Structured extraction failed: %s", e)
@@ -77,7 +69,6 @@ def _extract_structured(html: str, url: str) -> dict:
         "cook_time": _safe_call(scraper.cook_time),
         "total_time": _safe_call(scraper.total_time),
         "servings": _safe_call(scraper.yields),
-        "image": _safe_call(scraper.image),
         "site_name": _safe_call(scraper.site_name),
     }
     # Require at least a title and some content
@@ -92,17 +83,4 @@ def _safe_call(func):
         result = func()
         return result if result else None
     except Exception:
-        return None
-
-
-def _download_photo(client: httpx.Client, image_url: str | None) -> str | None:
-    """Download an image and return base64-encoded data."""
-    if not image_url:
-        return None
-    try:
-        response = client.get(image_url)
-        response.raise_for_status()
-        return base64.b64encode(response.content).decode("ascii")
-    except Exception as e:
-        logger.debug("Failed to download photo from %s: %s", image_url, e)
         return None

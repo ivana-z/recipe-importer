@@ -15,8 +15,6 @@ def export_recipe(
     recipe: dict,
     source_url: str | None = None,
     source_name: str | None = None,
-    photo_data: str | None = None,
-    image_url: str | None = None,
     output_dir: Path | None = None,
 ) -> Path:
     """Export a recipe dict to a .paprikarecipe file.
@@ -26,7 +24,7 @@ def export_recipe(
     output_dir = output_dir or DEFAULT_OUTPUT_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    paprika_data = build_paprika_json(recipe, source_url, source_name, photo_data, image_url)
+    paprika_data = build_paprika_json(recipe, source_url, source_name)
     filename = _unique_filename(output_dir, recipe["name"])
     output_path = output_dir / filename
 
@@ -41,8 +39,6 @@ def build_paprika_json(
     recipe: dict,
     source_url: str | None = None,
     source_name: str | None = None,
-    photo_data: str | None = None,
-    image_url: str | None = None,
     categories: list[str] | None = None,
 ) -> dict:
     """Build the full Paprika JSON schema."""
@@ -66,12 +62,12 @@ def build_paprika_json(
         "difficulty": "",
         "source": source,
         "source_url": source_url or "",
-        "image_url": image_url or "",
+        "image_url": "",
         "photo": "",
         "photo_hash": "",
         "photo_large": None,
         "photo_url": "",
-        "photo_data": photo_data or "",
+        "photo_data": "",
         "scale": "",
         "categories": categories or [],
         "rating": 0,

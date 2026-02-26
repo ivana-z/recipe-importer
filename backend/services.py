@@ -14,13 +14,10 @@ logger = logging.getLogger(__name__)
 async def import_from_url(url: str) -> dict:
     """Scrape a URL and format the recipe via Claude.
 
-    Returns a dict with recipe fields + photo_data, image_url, source.
+    Returns a dict with recipe fields + source.
     """
     recipe_data = await asyncio.to_thread(scrape_url, url)
 
-    # Remove fields not needed for formatting
-    recipe_data.pop("photo_data", None)
-    image_url = recipe_data.pop("image", None) or ""
     source_name = recipe_data.pop("site_name", None) or ""
 
     formatted = await asyncio.to_thread(
@@ -31,8 +28,6 @@ async def import_from_url(url: str) -> dict:
         **formatted,
         "source_url": url,
         "source": source_name,
-        "photo_data": "",
-        "image_url": image_url,
     }
 
 
@@ -67,8 +62,6 @@ async def import_from_images(image_files: list[tuple[str, bytes]]) -> dict:
         **formatted,
         "source_url": "",
         "source": "",
-        "photo_data": "",
-        "image_url": "",
     }
 
 
@@ -133,8 +126,6 @@ async def sync_recipe(
     cook_time: str,
     servings: str,
     notes: str,
-    photo_data: str,
-    image_url: str,
     paprika_email: str | None = None,
     paprika_password_enc: str | None = None,
 ) -> str:
@@ -156,8 +147,6 @@ async def sync_recipe(
         recipe=recipe,
         source_url=source_url or None,
         source_name=source or None,
-        photo_data=photo_data or None,
-        image_url=image_url or None,
         categories=categories,
     )
 

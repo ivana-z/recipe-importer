@@ -54,15 +54,11 @@ def import_recipe(url, image, output, verbose, sync):
     try:
         recipe_data = None
         images = None
-        photo_data = None
-        image_url = None
         source_name = None
 
         if url:
             click.echo("Scraping recipe...")
             recipe_data = scrape_url(url)
-            photo_data = recipe_data.pop("photo_data", None)
-            image_url = recipe_data.pop("image", None)
             source_name = recipe_data.pop("site_name", None)
 
         if image:
@@ -84,8 +80,6 @@ def import_recipe(url, image, output, verbose, sync):
             recipe=formatted,
             source_url=url,
             source_name=source_name,
-            photo_data=photo_data,
-            image_url=image_url,
             output_dir=output_dir,
         )
 
@@ -113,8 +107,6 @@ def import_recipe(url, image, output, verbose, sync):
             click.echo("Uploading to Paprika cloud...")
             client.upload_recipe(paprika_data)
             click.echo("Uploaded to Paprika cloud.")
-            if photo_data:
-                click.echo("Note: Photos cannot be synced via the API. Import the .paprikarecipe file in the app for photos.")
 
     except KeyboardInterrupt:
         click.echo("\nAborted.", err=True)

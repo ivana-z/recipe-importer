@@ -8,8 +8,6 @@ export interface Recipe {
   notes: string;
   source_url: string;
   source: string;
-  photo_data: string;
-  image_url: string;
 }
 
 export interface ImportResult {

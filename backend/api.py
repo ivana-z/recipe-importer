@@ -53,8 +53,6 @@ async def import_url(
                 cook_time=recipe.cook_time,
                 servings=recipe.servings,
                 notes=recipe.notes,
-                photo_data=recipe.photo_data,
-                image_url=recipe.image_url,
                 paprika_email=current_user.paprika_email,
                 paprika_password_enc=current_user.paprika_password_enc,
             )
@@ -102,8 +100,6 @@ async def import_images(
                 cook_time=recipe.cook_time,
                 servings=recipe.servings,
                 notes=recipe.notes,
-                photo_data=recipe.photo_data,
-                image_url=recipe.image_url,
                 paprika_email=current_user.paprika_email,
                 paprika_password_enc=current_user.paprika_password_enc,
             )
@@ -149,8 +145,6 @@ async def sync(
             cook_time=req.cook_time,
             servings=req.servings,
             notes=req.notes,
-            photo_data=req.photo_data,
-            image_url=req.image_url,
             paprika_email=current_user.paprika_email,
             paprika_password_enc=current_user.paprika_password_enc,
         )

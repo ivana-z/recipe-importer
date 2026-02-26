@@ -69,7 +69,6 @@ def _extract_structured(html: str, url: str) -> dict:
         "cook_time": _safe_call(scraper.cook_time),
         "total_time": _safe_call(scraper.total_time),
         "servings": _safe_call(scraper.yields),
-        "image": _safe_call(scraper.image),
         "site_name": _safe_call(scraper.site_name),
     }
     # Require at least a title and some content
