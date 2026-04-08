@@ -4,11 +4,11 @@ A tool that imports recipes from URLs or photos, reformats them using Gemini, an
 
 ## Features
 
-- **URL import** — extracts recipes from any recipe website using [recipe-scrapers](https://github.com/hhursev/recipe-scrapers) with [trafilatura](https://github.com/adbar/trafilatura) fallback
+- **URL import** — extracts recipes from any recipe website using [recipe-scrapers](https://github.com/hhursev/recipe-scrapers) (with `wild_mode` for sites not explicitly supported) and [trafilatura](https://github.com/adbar/trafilatura) fallback
 - **Photo import** — extracts recipes from images using Gemini's vision API
-- **Smart formatting** — converts imperial to metric, structures directions into chapters, bolds ingredients on first mention
+- **Smart formatting** — translates to English, converts imperial to metric, structures directions into chapters, bolds ingredients on first mention
 - **Paprika sync** — uploads recipes directly to Paprika 3 cloud
-- **Android share sheet** — share a URL from Chrome directly to the app (PWA)
+- **Android share sheet** — share a recipe URL or page (including Google app "title + link" shares) directly to the app (PWA)
 - **Duplicate handling** — auto-renames local `.paprikarecipe` files if a file with the same name already exists
 
 ## Web App
@@ -48,7 +48,7 @@ The app is designed to deploy on [Railway](https://railway.app):
 
 ### Android PWA
 
-Install the web app from Chrome ("Add to Home Screen"). Once installed, it appears in Android's share sheet — you can share a recipe URL directly from Chrome and it opens in the app with the URL pre-filled.
+Install the web app from Chrome ("Add to Home Screen"). Once installed, it appears in Android's share sheet — you can share a recipe URL directly from Chrome, or use the Google app's share which sends a "title + link" text, and the app extracts the URL automatically.
 
 ---
 
@@ -98,7 +98,8 @@ Recipes are saved to `~/paprika_recipes/` by default as `.paprikarecipe` files (
 
 Applied automatically to all imported recipes:
 
-- **Ingredients**: one per line, quantity first, no bullets
+- **Language**: translated to English regardless of source language
+- **Ingredients**: one per line, quantity first, no bullets; ingredients with no specific quantity (q.b./as needed) listed by name only
 - **Units**: tbsp/tsp stay as-is; butter converts to grams; pourable liquids in cups convert to ml; all other imperial (oz, lb, fl oz, pints, quarts, gallons) converts to metric
 - **Temperatures**: Celsius only, Fahrenheit references removed
 - **Directions**: structured into bold chapters (e.g. **Preparation**, **Cooking**); ingredients bolded with quantity on first mention
