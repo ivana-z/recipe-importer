@@ -60,7 +60,7 @@ def _fetch_html(client: httpx.Client, url: str) -> str:
 
 def _extract_structured(html: str, url: str) -> dict:
     """Extract structured recipe data using recipe-scrapers."""
-    scraper = scrape_html(html=html, org_url=url)
+    scraper = scrape_html(html=html, org_url=url, wild_mode=True)
     data = {
         "title": scraper.title(),
         "ingredients": scraper.ingredients(),
