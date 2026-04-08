@@ -35,7 +35,9 @@ function App() {
   const [sharedUrl] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     const candidate = params.get("url") || params.get("text") || "";
-    return candidate.startsWith("http") ? candidate : "";
+    if (candidate.startsWith("http")) return candidate;
+    const urlMatch = candidate.match(/https?:\/\/\S+/);
+    return urlMatch ? urlMatch[0] : "";
   });
 
   useEffect(() => {
