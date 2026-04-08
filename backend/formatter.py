@@ -33,6 +33,8 @@ reformat it according to strict rules. Return ONLY valid JSON with these fields:
 
 - Each ingredient on its own line, no bullet points or numbering
 - Format: quantity first, then ingredient name
+- Never omit quantities — if the source provides a quantity for an ingredient, it must \
+appear in the output; do not list ingredient names alone without their amount
 - For multi-part recipes (marinade, sauce, dressing, etc.): list ingredients under \
 each part title on its own line
 - Abbreviations: use "tbsp" for tablespoons, "tsp" for teaspoons
@@ -65,6 +67,7 @@ quantity (e.g. "Add **200g flour** and mix")
 
 ## General
 
+- Translate all content to English regardless of the source language
 - Preserve the original recipe's intent and proportions
 - If information is missing (prep_time, cook_time, servings), use an empty string
 - Do not invent or add ingredients/steps that are not in the original
@@ -73,8 +76,9 @@ quantity (e.g. "Add **200g flour** and mix")
 
 _RULES_REMINDER = (
     "Apply ALL formatting rules from your instructions without exception:\n"
-    "- Ingredients: one per line, quantity first, no bullets, correct abbreviations "
-    "(tbsp/tsp), group multi-part recipes under section titles\n"
+    "- Translate all content to English\n"
+    "- Ingredients: one per line, quantity first (never omit quantities), no bullets, "
+    "correct abbreviations (tbsp/tsp), group multi-part recipes under section titles\n"
     "- Units: convert butter to grams; pourable liquids cups→ml; all other imperial "
     "(oz, lb, fl oz, pints, quarts, gallons) to metric (g/ml under 1kg/L, kg/L over); "
     "inches to mm/cm; Fahrenheit to Celsius only\n"
