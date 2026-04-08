@@ -22,6 +22,12 @@ async function apiFetch<T>(
     },
   });
 
+  if (res.status === 401) {
+    localStorage.removeItem("jwt_token");
+    window.location.href = "/";
+    throw new Error("Session expired");
+  }
+
   if (!res.ok) {
     const body = await res.text();
     throw new Error(body || `Request failed: ${res.status}`);
