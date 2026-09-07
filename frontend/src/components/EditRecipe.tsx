@@ -10,10 +10,14 @@ export function EditRecipe({
   recipe,
   onSync,
   syncing,
+  position,
+  total,
 }: {
   recipe: Recipe;
   onSync: (overrides: { name: string; source: string; categories: string[] }) => void;
   syncing: boolean;
+  position: number;
+  total: number;
 }) {
   const [name, setName] = useState(recipe.name);
   const [source, setSource] = useState(recipe.source);
@@ -22,7 +26,7 @@ export function EditRecipe({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // Send only the real Paprika category names (values), not display labels
+    // Paprika expects category UIDs, stored in SelectedCategory.value.
     onSync({ name, source, categories: categories.map((c) => c.value) });
   }
 
@@ -37,6 +41,12 @@ export function EditRecipe({
         className="flex flex-col items-center gap-8 px-6 pt-12"
       >
         <ChefIcon className="h-20 w-20" />
+
+        {total > 1 && (
+          <p className="text-sm font-medium text-muted-foreground">
+            Recipe {position} of {total}
+          </p>
+        )}
 
         <div className="flex w-full max-w-sm flex-col gap-5">
           <Input
@@ -104,12 +114,14 @@ export function EditRecipe({
         </div>
       </form>
 
-      <CategoryPicker
-        open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
-        onSelect={setCategories}
-        alreadySelected={categories}
-      />
+      {pickerOpen && (
+        <CategoryPicker
+          open
+          onClose={() => setPickerOpen(false)}
+          onSelect={setCategories}
+          alreadySelected={categories}
+        />
+      )}
     </>
   );
 }

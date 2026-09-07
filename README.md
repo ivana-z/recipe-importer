@@ -1,19 +1,26 @@
 # Recipe Importer
 
-A tool that imports recipes from URLs or photos, reformats them using Gemini, and syncs to Paprika 3. Available as a web app (PWA) and a CLI.
+A tool that imports recipes from public URLs, photos, or pasted text, reformats them using Gemini, and syncs them to Paprika 3. Available as a web app (PWA) and a CLI.
 
 ## Features
 
-- **URL import** — extracts recipes from any recipe website using [recipe-scrapers](https://github.com/hhursev/recipe-scrapers) (with `wild_mode` for sites not explicitly supported) and [trafilatura](https://github.com/adbar/trafilatura) fallback
+- **Recipe-page import** — safely extracts public recipe pages using [recipe-scrapers](https://github.com/hhursev/recipe-scrapers), with [trafilatura](https://github.com/adbar/trafilatura) and raw HTML as fallbacks
+- **Social URL import** — best-effort extraction of public YouTube descriptions/captions and public Instagram captions without downloading media
 - **Photo import** — extracts recipes from images using Gemini's vision API
+- **Pasted-text import** — formats recipe text directly in the PWA
+- **Multi-recipe import** — selects and reviews up to 10 detected recipes, then sends them to Paprika sequentially
 - **Smart formatting** — translates to English, converts imperial to metric, structures directions into chapters, bolds ingredients on first mention
-- **Paprika sync** — uploads recipes directly to Paprika 3 cloud
+- **Paprika sync** — uploads reviewed recipes directly to Paprika 3 cloud
 - **Android share sheet** — share a recipe URL or page (including Google app "title + link" shares) directly to the app (PWA)
 - **Duplicate handling** — auto-renames local `.paprikarecipe` files if a file with the same name already exists
 
 ## Web App
 
 The web app is a mobile-first PWA with Google OAuth login and per-user Paprika credentials.
+
+Every web import uses the plural `recipes` response contract. A single result opens directly for review; multiple results open a selection screen and are reviewed in source order. Imports accept at most 10 images of 10 MiB each, 100,000 pasted/source characters, and 10 formatted recipes. Oversized or overfull sources are rejected rather than truncated.
+
+Social extraction is intentionally best effort. It reads anonymous public metadata only, never downloads media, and may stop working when a platform changes access behavior. When a description or caption is unavailable, use the Text source.
 
 ### Running locally
 
@@ -45,6 +52,7 @@ The app is designed to deploy on [Railway](https://railway.app):
 - Connect your GitHub repo for auto-deploy on push to `master`
 - Add a PostgreSQL add-on (DATABASE_URL is injected automatically)
 - Set the environment variables listed above
+- The production image installs the `yt-dlp-ejs` and Deno runtime dependencies through the `yt-dlp[default,deno]` Python extra
 
 ### Android PWA
 

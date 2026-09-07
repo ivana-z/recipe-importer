@@ -2,10 +2,19 @@
 
 from pydantic import BaseModel
 
+from .url_safety import validate_source_url
+
 
 class ImportUrlRequest(BaseModel):
     url: str
-    quick: bool = False
+
+    def validated_url(self) -> str:
+        """Return the structurally valid URL for a source import."""
+        return validate_source_url(self.url).url
+
+
+class ImportTextRequest(BaseModel):
+    text: str
 
 
 class RecipeResponse(BaseModel):
@@ -21,8 +30,7 @@ class RecipeResponse(BaseModel):
 
 
 class ImportResult(BaseModel):
-    recipe: RecipeResponse
-    synced: bool = False
+    recipes: list[RecipeResponse]
 
 
 class SyncRequest(BaseModel):

@@ -11,8 +11,7 @@ export interface Recipe {
 }
 
 export interface ImportResult {
-  recipe: Recipe;
-  synced: boolean;
+  recipes: Recipe[];
 }
 
 export interface SyncResult {
@@ -38,6 +37,7 @@ export interface CategoriesResponse {
 export type AppState =
   | "idle"
   | "loading"
+  | "selecting"
   | "preview"
   | "syncing"
   | "success"

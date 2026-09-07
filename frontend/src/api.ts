@@ -5,15 +5,78 @@ export interface CredentialsStatus {
   paprika_email: string;
 }
 
-function getToken(): string {
-  return localStorage.getItem("jwt_token") || "";
+export interface ApiErrorDetail {
+  code: string;
+  message: string;
+}
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string;
+
+  constructor(message: string, status: number, code: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
+export const GENERIC_API_ERROR_MESSAGE = "Something went wrong. Please try again.";
+
+function parseErrorDetail(body: string): ApiErrorDetail | null {
+  if (!body) return null;
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    return null;
+  }
+
+  if (typeof payload !== "object" || payload === null || !("detail" in payload)) {
+    return null;
+  }
+
+  const detail = payload.detail;
+  if (
+    typeof detail !== "object" ||
+    detail === null ||
+    !("message" in detail) ||
+    typeof detail.message !== "string" ||
+    !detail.message.trim()
+  ) {
+    return null;
+  }
+
+  return {
+    code:
+      "code" in detail && typeof detail.code === "string" && detail.code.trim()
+        ? detail.code
+        : "request_failed",
+    message: detail.message,
+  };
+}
+
+const TOKEN_STORAGE_KEY = "jwt_token";
+const LEGACY_API_CACHE = "api-cache";
+
+export async function clearLegacyApiCache(): Promise<void> {
+  if ("caches" in window) {
+    await window.caches.delete(LEGACY_API_CACHE);
+  }
+}
+
+export async function clearAuthSession(): Promise<void> {
+  localStorage.removeItem(TOKEN_STORAGE_KEY);
+  await clearLegacyApiCache();
 }
 
 async function apiFetch<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const token = getToken();
+  const token = localStorage.getItem(TOKEN_STORAGE_KEY) || "";
   const res = await fetch(path, {
     ...options,
     headers: {
@@ -23,14 +86,18 @@ async function apiFetch<T>(
   });
 
   if (res.status === 401) {
-    localStorage.removeItem("jwt_token");
+    await clearAuthSession();
     window.location.href = "/";
     throw new Error("Session expired");
   }
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(body || `Request failed: ${res.status}`);
+    const detail = parseErrorDetail(body);
+    if (detail) {
+      throw new ApiError(detail.message, res.status, detail.code);
+    }
+    throw new ApiError(GENERIC_API_ERROR_MESSAGE, res.status, "request_failed");
   }
 
   return res.json();
@@ -42,26 +109,27 @@ export async function getGoogleLoginUrl(): Promise<{ auth_url: string; state: st
   return res.json();
 }
 
-export async function importUrl(
-  url: string,
-  quick = false
-): Promise<ImportResult> {
+export async function importUrl(url: string): Promise<ImportResult> {
   return apiFetch<ImportResult>("/api/import/url", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url, quick }),
+    body: JSON.stringify({ url }),
   });
 }
 
-export async function importImages(
-  files: File[],
-  quick = false
-): Promise<ImportResult> {
+export async function importText(text: string): Promise<ImportResult> {
+  return apiFetch<ImportResult>("/api/import/text", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+}
+
+export async function importImages(files: File[]): Promise<ImportResult> {
   const form = new FormData();
-  for (const f of files) {
-    form.append("images", f);
+  for (const file of files) {
+    form.append("images", file);
   }
-  form.append("quick", String(quick));
 
   return apiFetch<ImportResult>("/api/import/images", {
     method: "POST",

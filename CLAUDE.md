@@ -37,11 +37,15 @@ docker compose up --build
 ## Setup
 Copy `.env.example` to `.env` and add your keys:
 ```
-GEMINI_API_KEY=AIza...       # From Google AI Studio
-PAPRIKA_EMAIL=...        # For --sync and web app
-PAPRIKA_PASSWORD=...     # For --sync and web app
-APP_SECRET=...           # For web app auth
-DOMAIN=recipes.example.com  # For production deployment
+GEMINI_API_KEY=...          # Google AI Studio
+GOOGLE_CLIENT_ID=...        # Google OAuth
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REDIRECT_URI=...
+JWT_SECRET=...              # JWT signing secret
+ENCRYPTION_KEY=...          # Fernet key for Paprika passwords
+ALLOWED_EMAILS=...          # Comma-separated Google account allowlist
+FRONTEND_URL=...            # e.g. http://localhost:5173
+DATABASE_URL=...            # PostgreSQL connection string
 ```
 
 ## Architecture
@@ -57,27 +61,34 @@ src/recipe_importer/
 └── paprika_api.py    # Paprika 3 cloud sync client
 
 backend/
-├── main.py           # FastAPI app, static file serving, CORS
-├── api.py            # API route definitions (/api/import/url, /api/import/images, /api/categories, /api/sync)
-├── auth.py           # Bearer token auth (APP_SECRET)
-├── schemas.py        # Pydantic request/response models
-└── services.py       # Orchestration: wraps existing modules for async web use
+├── main.py              # FastAPI app, static file serving, CORS
+├── api.py               # Import, category, sync, and credential routes
+├── formatter.py         # PWA Gemini call and strict plural response parsing
+├── prompts.py           # Shared URL/image/text formatting rules
+├── scraper.py           # Safe conventional recipe-page extraction
+├── social_extractor.py  # YouTube/Instagram public metadata extraction
+├── url_safety.py        # DNS, address, and redirect validation
+├── auth.py              # Bearer token authentication
+├── schemas.py           # Pydantic request/response models
+└── services.py          # Async orchestration and import limits
 
 frontend/              # React + Vite + TypeScript + shadcn/ui PWA
 ├── src/
 │   ├── App.tsx        # Main app with state-based routing
 │   ├── api.ts         # Fetch wrapper (Bearer token)
 │   ├── types.ts       # TypeScript types
-│   ├── hooks/useImport.ts  # State machine: idle→loading→preview→syncing→success
-│   └── components/    # Login, ImportForm, EditRecipe, CategoryPicker, StatusBar
+│   ├── hooks/useImport.ts  # Import, selection, review queue, and sync state
+│   └── components/    # Login, import, selection, review, categories, status
 └── vite.config.ts     # Vite + PWA + Tailwind v4
 ```
 
-### Pipeline
-1. **Input**: URL → `scraper.py` or images → `image_reader.py`
-2. **Format**: `formatter.py` sends to Gemini with rules from `prompts.py`
-3. **Export**: `exporter.py` creates gzipped `.paprikarecipe` in `~/paprika_recipes/`
-4. **Sync** (optional): `paprika_api.py` uploads to Paprika cloud
+### Web pipeline
+1. **Input**: safe recipe page, YouTube/Instagram public metadata, images, or pasted text
+2. **Format**: `backend/formatter.py` applies the shared PWA prompt and validates a strict plural batch
+3. **Review**: one recipe opens directly; multiple recipes use selection and a source-ordered in-memory queue
+4. **Sync**: `/api/sync` uploads exactly one reviewed recipe per request
+
+The CLI remains separate and continues to export `.paprikarecipe` files through `src/recipe_importer`.
 
 ### Key details
 - Gemini model: `gemini-2.5-flash`
@@ -86,3 +97,6 @@ frontend/              # React + Vite + TypeScript + shadcn/ui PWA
 - API retries: 3 attempts with exponential backoff
 - Web app: dark theme, golden/amber accent, mobile-first PWA
 - Deployment: Docker multi-stage build + Caddy for HTTPS
+- Web import limits: 10 images, 10 MiB per image, 100,000 source characters, and 10 recipes per source
+- Social imports are best effort, use anonymous public metadata only, and never download media
+- Production installs `yt-dlp-ejs` and Deno through `yt-dlp[default,deno]`

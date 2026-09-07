@@ -1,7 +1,4 @@
-"""Gemini API call for recipe formatting with retry logic.
-
-Includes system prompt and message builders (merged from prompts.py).
-"""
+"""Gemini API call for recipe formatting with retry logic."""
 
 import base64
 import json
@@ -12,110 +9,59 @@ import time
 from google import genai
 from google.genai import types
 
+from .prompts import (
+    SYSTEM_PROMPT,
+    build_image_message,
+    build_raw_html_message,
+    build_text_message,
+    build_url_message,
+)
+from .source_errors import SourceError
+
 logger = logging.getLogger(__name__)
 
 MODEL = "gemini-2.5-flash"
 MAX_RETRIES = 3
 BASE_DELAY = 2  # seconds
-
-SYSTEM_PROMPT = """\
-You are a recipe editor. You receive recipe data (from a URL scrape or photos) and \
-reformat it according to strict rules. Return ONLY valid JSON with these fields:
-- "name": recipe title
-- "ingredients": formatted ingredients text
-- "directions": formatted directions text
-- "prep_time": preparation time (e.g. "15 min") or ""
-- "cook_time": cooking time (e.g. "30 min") or ""
-- "servings": servings (e.g. "4 servings") or ""
-- "notes": any additional notes or ""
-
-## Ingredient Formatting Rules
-
-- Each ingredient on its own line, no bullet points or numbering
-- Format: quantity first, then ingredient name
-- If an ingredient has no specific quantity (e.g. "q.b.", "quanto basta", "to taste", \
-"as needed", "as desired"), list just the ingredient name with no quantity prefix
-- For multi-part recipes (marinade, sauce, dressing, etc.): list ingredients under \
-each part title on its own line
-- Abbreviations: use "tbsp" for tablespoons, "tsp" for teaspoons
-- Show only ONE unit of measurement and quantity per ingredient
-- Do NOT convert tbsp/tsp quantities to metric, EXCEPT for butter — always convert \
-butter to grams
-- Cups: keep cups as-is by default. ONLY convert cups to ml when the ingredient is \
-a pourable liquid (water, milk, broth, stock, cream, juice, oil, wine, vinegar, \
-soy sauce, etc.). Everything else stays in cups — this includes flour, sugar, herbs, \
-leaves, oats, rice, nuts, cheese, breadcrumbs, chocolate chips, diced vegetables, \
-and any other solid, dry, or non-pourable ingredient.
-- Convert all other imperial units (oz, lb, fl oz, pints, quarts, gallons) to metric:
-  - Under 1 L / 1 kg: convert to millilitres (ml) and grams (g), round UP to the \
-nearest 5
-  - Over 1 L / 1 kg: convert to litres (L) and kilograms (kg), round UP to the \
-nearest 0.05
-- Length: convert inches to metric. If the converted value is 20 mm or less, show \
-in mm rounded UP to the nearest whole number. If over 20 mm, show in cm rounded UP \
-to the nearest 0.5.
-- Temperatures: Celsius only (°C). Delete any gas mark or Fahrenheit references. \
-If only Fahrenheit is given, convert to Celsius.
-
-## Direction Formatting Rules
-
-- Structure into chapters with bold titles (e.g. **Soaking**, **Preparation**, \
-**Cooking**)
-- Convert any amounts/temperatures in directions using the same rules as ingredients
-- Bold each ingredient name when it is first mentioned in a step, and include its \
-quantity (e.g. "Add **200g flour** and mix")
-
-## General
-
-- Translate all content to English regardless of the source language
-- Preserve the original recipe's intent and proportions
-- If information is missing (prep_time, cook_time, servings), use an empty string
-- Do not invent or add ingredients/steps that are not in the original
-- Return ONLY the JSON object, no markdown fencing or extra text
-"""
-
-_RULES_REMINDER = (
-    "Apply ALL formatting rules from your instructions without exception:\n"
-    "- Translate all content to English\n"
-    "- Ingredients: one per line, quantity first, no bullets, correct abbreviations "
-    "(tbsp/tsp), group multi-part recipes under section titles; omit quantity prefix "
-    "when source says q.b./quanto basta/to taste/as needed\n"
-    "- Units: convert butter to grams; pourable liquids cups→ml; all other imperial "
-    "(oz, lb, fl oz, pints, quarts, gallons) to metric (g/ml under 1kg/L, kg/L over); "
-    "inches to mm/cm; Fahrenheit to Celsius only\n"
-    "- Directions: use bold chapter titles (e.g. **Preparation**, **Cooking**); bold "
-    "each ingredient name on first mention with its quantity\n"
-    "- Return ONLY the JSON object, no markdown fencing or extra text"
-)
+MAX_SOURCE_TEXT_CHARS = 100_000
+MAX_RECIPES_PER_SOURCE = 10
 
 
 def format_recipe(
     recipe_data: dict | None = None,
     images: list[dict] | None = None,
+    text: str | None = None,
+    text_label: str = "Pasted text",
     source_url: str | None = None,
 ) -> dict:
-    """Format a recipe using Gemini.
+    """Format one source into a validated recipe batch using Gemini.
 
-    Accepts either structured recipe_data (from URL scraping),
-    images (from photo input), or raw HTML fallback data.
-
-    Returns a dict with: name, ingredients, directions, prep_time,
-    cook_time, servings, notes.
+    Accepts structured recipe data, image parts, pasted or extracted text, or raw
+    HTML fallback data. Returns ``{"recipes": [...]}``.
     """
-    client = _get_client()
-
-    if images:
-        contents = _image_msg_to_parts(_build_image_message(images))
+    if text is not None:
+        if not text.strip():
+            raise ValueError("Must provide non-empty text")
+        _ensure_source_size(text)
+        contents = build_text_message(text, source_label=text_label)
+    elif images:
+        contents = _image_msg_to_parts(build_image_message(images))
     elif recipe_data and "raw_html" in recipe_data:
-        contents = _build_raw_html_message(
-            recipe_data["raw_html"], recipe_data.get("url", source_url or "unknown")
+        raw_html = recipe_data["raw_html"]
+        if not isinstance(raw_html, str):
+            raise ValueError("Raw HTML source must be text")
+        _ensure_source_size(raw_html)
+        contents = build_raw_html_message(
+            raw_html, recipe_data.get("url", source_url or "unknown")
         )
     elif recipe_data:
-        contents = _build_url_message(recipe_data)
+        _ensure_source_size(json.dumps(recipe_data, ensure_ascii=False, default=str))
+        contents = build_url_message(recipe_data)
     else:
-        raise ValueError("Must provide either recipe_data or images")
+        raise ValueError("Must provide either recipe_data, images, or text")
 
-    last_error = None
+    client = _get_client()
+
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             logger.debug("Gemini API call attempt %d/%d", attempt, MAX_RETRIES)
@@ -127,11 +73,12 @@ def format_recipe(
                 ),
                 contents=contents,
             )
-            text = response.text
-            logger.debug("Gemini response: %s", text)
-            return _parse_response(text)
+            text_response = response.text
+            logger.debug("Gemini response: %s", text_response)
+            return _parse_response(text_response)
+        except SourceError:
+            raise
         except Exception as e:
-            last_error = e
             if attempt < MAX_RETRIES:
                 delay = BASE_DELAY * (2 ** (attempt - 1))
                 logger.debug("API error: %s. Retrying in %ds...", e, delay)
@@ -168,58 +115,77 @@ def _image_msg_to_parts(msg: list) -> list:
 
 
 def _parse_response(text: str) -> dict:
-    """Parse Gemini's JSON response into a recipe dict."""
+    """Parse and validate Gemini's bounded recipe batch."""
     try:
         data = json.loads(text)
-    except json.JSONDecodeError as e:
-        raise RuntimeError(
-            f"Failed to parse Gemini response as JSON: {e}\n{text}"
+    except json.JSONDecodeError as error:
+        raise RuntimeError("Failed to parse Gemini response as JSON") from error
+
+    if not isinstance(data, dict):
+        raise RuntimeError("Gemini response must be a JSON object")
+    if set(data) != {"recipes", "has_more"}:
+        raise RuntimeError("Gemini response must contain only recipes and has_more")
+
+    recipes = data.get("recipes")
+    has_more = data.get("has_more")
+    if not isinstance(recipes, list) or not isinstance(has_more, bool):
+        raise RuntimeError("Gemini response must contain recipes and has_more")
+
+    if has_more or len(recipes) > MAX_RECIPES_PER_SOURCE:
+        raise SourceError(
+            "too_many_recipes",
+            f"This source contains more than {MAX_RECIPES_PER_SOURCE} recipes. Use a smaller source.",
+            422,
+        )
+    if not recipes:
+        raise SourceError(
+            "no_recipe_found",
+            "No complete recipe was found in this source.",
+            422,
         )
 
-    required_fields = ["name", "ingredients", "directions"]
-    for field in required_fields:
-        if field not in data:
-            raise RuntimeError(f"Gemini response missing required field: {field}")
+    normalized_recipes: list[dict[str, str]] = []
+    required_fields = ("name", "ingredients", "directions")
+    optional_fields = ("prep_time", "cook_time", "servings", "notes")
 
+    for index, recipe in enumerate(recipes):
+        if not isinstance(recipe, dict):
+            raise RuntimeError(f"Gemini recipe {index + 1} must be an object")
+
+        for field in required_fields:
+            value = recipe.get(field)
+            if not isinstance(value, str) or not value.strip():
+                raise RuntimeError(
+                    f"Gemini recipe {index + 1} has an invalid {field}"
+                )
+
+        normalized = {field: recipe[field] for field in required_fields}
+        for field in optional_fields:
+            value = recipe.get(field, "")
+            if not isinstance(value, str):
+                raise RuntimeError(
+                    f"Gemini recipe {index + 1} has an invalid {field}"
+                )
+            normalized[field] = value
+        normalized_recipes.append(normalized)
+
+    return {"recipes": normalized_recipes}
+
+
+def apply_source_metadata(batch: dict, *, source_url: str, source: str) -> dict:
+    """Apply source metadata to every recipe in a validated batch."""
     return {
-        "name": data["name"],
-        "ingredients": data["ingredients"],
-        "directions": data["directions"],
-        "prep_time": data.get("prep_time", ""),
-        "cook_time": data.get("cook_time", ""),
-        "servings": data.get("servings", ""),
-        "notes": data.get("notes", ""),
+        "recipes": [
+            {**recipe, "source_url": source_url, "source": source}
+            for recipe in batch["recipes"]
+        ]
     }
 
 
-def _build_url_message(recipe_data: dict) -> str:
-    parts = [f"Recipe: {recipe_data.get('title', 'Unknown')}"]
-
-    if recipe_data.get("ingredients"):
-        parts.append("\nIngredients:\n" + "\n".join(recipe_data["ingredients"]))
-
-    if recipe_data.get("directions"):
-        parts.append("\nDirections:\n" + "\n".join(recipe_data["directions"]))
-
-    for field in ("prep_time", "cook_time", "total_time", "servings"):
-        if recipe_data.get(field):
-            parts.append(f"\n{field.replace('_', ' ').title()}: {recipe_data[field]}")
-
-    text = "\n".join(parts)
-    return f"Please reformat this recipe:\n\n{text}\n\n{_RULES_REMINDER}"
-
-
-def _build_image_message(images: list[dict]) -> list:
-    content = list(images)
-    content.append({
-        "type": "text",
-        "text": f"Please extract and reformat the recipe from the image(s) above.\n\n{_RULES_REMINDER}",
-    })
-    return content
-
-
-def _build_raw_html_message(html: str, url: str) -> str:
-    return (
-        f"I extracted the following content from {url}. "
-        f"Please find and reformat the recipe:\n\n{html}\n\n{_RULES_REMINDER}"
-    )
+def _ensure_source_size(text: str) -> None:
+    if len(text) > MAX_SOURCE_TEXT_CHARS:
+        raise SourceError(
+            "source_too_large",
+            f"Recipe text is limited to {MAX_SOURCE_TEXT_CHARS} characters.",
+            413,
+        )

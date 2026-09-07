@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { fetchCredentialStatus, saveCredentials } from "../api";
+import {
+  clearAuthSession,
+  fetchCredentialStatus,
+  saveCredentials,
+} from "../api";
 
 interface SettingsProps {
   onBack: () => void;
@@ -46,9 +50,12 @@ export function Settings({ onBack }: SettingsProps) {
     }
   }
 
-  function handleLogout() {
-    localStorage.removeItem("jwt_token");
-    window.location.reload();
+  async function handleLogout() {
+    try {
+      await clearAuthSession();
+    } finally {
+      window.location.reload();
+    }
   }
 
   return (

@@ -3,39 +3,47 @@ import type { AppState } from "../types";
 const messages: Record<AppState, string> = {
   idle: "",
   loading: "Processing recipe...",
+  selecting: "",
   preview: "",
   syncing: "Sending to Paprika...",
-  success: "Recipe sent to Paprika!",
+  success: "",
   error: "",
 };
 
 export function StatusBar({
   state,
   error,
+  completedCount = 0,
 }: {
   state: AppState;
   error: string;
+  completedCount?: number;
 }) {
-  if (state === "idle" || state === "preview") return null;
+  if (!error && (state === "idle" || state === "selecting" || state === "preview")) {
+    return null;
+  }
 
-  if (state === "error") {
+  if (error) {
     return (
-      <div className="rounded-lg bg-destructive/15 px-4 py-3 text-sm text-destructive">
-        {error || "Something went wrong"}
+      <div
+        role="alert"
+        className="w-full max-w-sm break-words rounded-lg bg-destructive/15 px-4 py-3 text-sm leading-6 text-destructive"
+      >
+        {error || "Something went wrong. Please try again."}
       </div>
     );
   }
 
   if (state === "success") {
     return (
-      <div className="rounded-lg bg-primary/15 px-4 py-3 text-sm text-primary">
-        {messages.success}
+      <div className="w-full max-w-sm rounded-lg bg-primary/15 px-4 py-3 text-sm text-primary">
+        {completedCount === 1 ? "Recipe sent to Paprika!" : `${completedCount} recipes sent to Paprika!`}
       </div>
     );
   }
 
   return (
-    <div className="flex items-center gap-3 rounded-lg bg-card px-4 py-3 text-sm text-muted-foreground">
+    <div className="flex w-full max-w-sm items-center gap-3 rounded-lg bg-card px-4 py-3 text-sm text-muted-foreground">
       <svg
         className="h-4 w-4 animate-spin"
         viewBox="0 0 24 24"

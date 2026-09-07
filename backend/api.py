@@ -2,7 +2,7 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from .auth import get_current_user
@@ -15,12 +15,22 @@ from .schemas import (
     CredentialsRequest,
     CredentialsStatus,
     ImportResult,
+    ImportTextRequest,
     ImportUrlRequest,
     RecipeResponse,
     SyncRequest,
     SyncResult,
 )
-from .services import get_categories, import_from_images, import_from_url, sync_recipe
+from .services import (
+    MAX_IMAGE_BYTES,
+    MAX_IMAGE_COUNT,
+    get_categories,
+    import_from_images,
+    import_from_text,
+    import_from_url,
+    sync_recipe,
+)
+from .source_errors import SourceError
 
 logger = logging.getLogger(__name__)
 
@@ -33,83 +43,79 @@ async def import_url(
     current_user: User = Depends(get_current_user),
 ):
     try:
-        result = await import_from_url(req.url)
+        result = await import_from_url(req.validated_url())
+    except SourceError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail)
     except Exception:
         logger.exception("URL import failed")
         raise HTTPException(status_code=500, detail="Import failed")
 
-    recipe = RecipeResponse(**result)
+    return _import_result(result)
 
-    if req.quick:
-        try:
-            final_name = await sync_recipe(
-                name=recipe.name,
-                source=recipe.source,
-                source_url=recipe.source_url,
-                categories=[],
-                ingredients=recipe.ingredients,
-                directions=recipe.directions,
-                prep_time=recipe.prep_time,
-                cook_time=recipe.cook_time,
-                servings=recipe.servings,
-                notes=recipe.notes,
-                paprika_email=current_user.paprika_email,
-                paprika_password_enc=current_user.paprika_password_enc,
-            )
-            recipe.name = final_name
-            return ImportResult(recipe=recipe, synced=True)
-        except Exception:
-            logger.exception("Quick sync failed")
-            return ImportResult(recipe=recipe, synced=False)
 
-    return ImportResult(recipe=recipe)
+@router.post("/import/text", response_model=ImportResult)
+async def import_text(
+    req: ImportTextRequest,
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        result = await import_from_text(req.text)
+    except SourceError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail)
+    except Exception:
+        logger.exception("Text import failed")
+        raise HTTPException(status_code=500, detail="Import failed")
+
+    return _import_result(result)
 
 
 @router.post("/import/images", response_model=ImportResult)
 async def import_images(
     images: list[UploadFile] = File(...),
-    quick: bool = Form(False),
     current_user: User = Depends(get_current_user),
 ):
     if not images:
         raise HTTPException(status_code=400, detail="At least one image is required")
+    if len(images) > MAX_IMAGE_COUNT:
+        raise HTTPException(
+            status_code=413,
+            detail={
+                "code": "too_many_images",
+                "message": f"Upload no more than {MAX_IMAGE_COUNT} images at a time.",
+            },
+        )
 
     image_files = []
     for img in images:
-        data = await img.read()
+        data = await img.read(MAX_IMAGE_BYTES + 1)
+        if len(data) > MAX_IMAGE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail={
+                    "code": "image_too_large",
+                    "message": (
+                        f"Each image must be "
+                        f"{MAX_IMAGE_BYTES // (1024 * 1024)} MB or smaller."
+                    ),
+                },
+            )
         image_files.append((img.filename or "image.jpg", data))
 
     try:
         result = await import_from_images(image_files)
+    except SourceError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail)
     except Exception:
         logger.exception("Image import failed")
         raise HTTPException(status_code=500, detail="Import failed")
 
-    recipe = RecipeResponse(**result)
+    return _import_result(result)
 
-    if quick:
-        try:
-            final_name = await sync_recipe(
-                name=recipe.name,
-                source=recipe.source,
-                source_url=recipe.source_url,
-                categories=[],
-                ingredients=recipe.ingredients,
-                directions=recipe.directions,
-                prep_time=recipe.prep_time,
-                cook_time=recipe.cook_time,
-                servings=recipe.servings,
-                notes=recipe.notes,
-                paprika_email=current_user.paprika_email,
-                paprika_password_enc=current_user.paprika_password_enc,
-            )
-            recipe.name = final_name
-            return ImportResult(recipe=recipe, synced=True)
-        except Exception:
-            logger.exception("Quick sync failed")
-            return ImportResult(recipe=recipe, synced=False)
 
-    return ImportResult(recipe=recipe)
+def _import_result(result: dict) -> ImportResult:
+    return ImportResult(
+        recipes=[RecipeResponse(**recipe) for recipe in result["recipes"]]
+    )
 
 
 @router.get("/categories", response_model=CategoriesResponse)

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "recipe-importer"
 version = "0.1.0"
-description = "Import recipes from URLs or photos into Paprika 3 format"
+description = "Import recipes from public URLs, images, or pasted text into Paprika 3"
 requires-python = ">=3.11"
 dependencies = [
     "google-genai>=0.8.0",
@@ -22,7 +22,16 @@ dependencies = [
     "sqlalchemy>=2.0.0",
     "psycopg2-binary>=2.9.0",
     "cryptography>=42.0.0",
+    "yt-dlp[default,deno]>=2025.8.22",
 ]
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.4,<9",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 
 [project.scripts]
 recipe-importer = "recipe_importer.cli:cli"

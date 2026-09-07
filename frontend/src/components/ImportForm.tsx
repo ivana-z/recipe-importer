@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ChefIcon } from "./ChefIcon";
 
-type Tab = "url" | "images";
+type Tab = "url" | "images" | "text";
 
 interface StoredImage {
   name: string;
@@ -13,6 +13,7 @@ interface StoredImage {
 
 const TAB_KEY = "import_tab";
 const IMAGES_KEY = "import_images";
+const MAX_SOURCE_TEXT_CHARS = 100_000;
 
 function loadStoredImages(): StoredImage[] {
   try {
@@ -41,19 +42,33 @@ async function dataUrlToFile(dataUrl: string, name: string): Promise<File> {
 export function ImportForm({
   onSubmitUrl,
   onSubmitImages,
+  onSubmitText,
   initialUrl = "",
+  disabled = false,
 }: {
   onSubmitUrl: (url: string) => void;
   onSubmitImages: (files: File[]) => void;
+  onSubmitText: (text: string) => void;
   initialUrl?: string;
+  disabled?: boolean;
 }) {
-  const [tab, setTab] = useState<Tab>(
-    () => initialUrl ? "url" : (sessionStorage.getItem(TAB_KEY) as Tab) || "url"
-  );
+  const [tab, setTab] = useState<Tab>(() => {
+    if (initialUrl) return "url";
+    try {
+      return (sessionStorage.getItem(TAB_KEY) as Tab) || "url";
+    } catch {
+      return "url";
+    }
+  });
   const [url, setUrl] = useState(initialUrl);
   const [images, setImages] = useState<StoredImage[]>(loadStoredImages);
+  const [text, setText] = useState("");
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
+  const textTrimmed = text.trim();
+  const textCount = text.length;
+  const textOverLimit = textCount > MAX_SOURCE_TEXT_CHARS;
+  const textCanSubmit = !disabled && textTrimmed.length > 0 && !textOverLimit;
 
   // Persist tab choice
   useEffect(() => {
@@ -88,12 +103,13 @@ export function ImportForm({
 
   function handleUrlSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (url.trim()) onSubmitUrl(url.trim());
+    if (disabled || !url.trim()) return;
+    onSubmitUrl(url.trim());
   }
 
   async function handleImageSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (images.length === 0) return;
+    if (disabled || images.length === 0) return;
 
     // Reconstruct File objects from stored data URLs
     const files = await Promise.all(
@@ -102,6 +118,12 @@ export function ImportForm({
     // Clear stored images after submission
     sessionStorage.removeItem(IMAGES_KEY);
     onSubmitImages(files);
+  }
+
+  function handleTextSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!textCanSubmit) return;
+    onSubmitText(text);
   }
 
   return (
@@ -114,41 +136,67 @@ export function ImportForm({
         type="single"
         value={tab}
         onValueChange={(v) => v && setTab(v as Tab)}
-        className="rounded-lg border border-border p-1"
+        className="grid w-full max-w-sm grid-cols-3 gap-1 rounded-2xl border border-border bg-card/60 p-1 shadow-sm backdrop-blur"
+        aria-label="Recipe source"
       >
         <ToggleGroupItem
           value="url"
-          className="gap-2 rounded-md px-5 py-2 data-[state=on]:border data-[state=on]:border-border data-[state=on]:bg-card"
+          disabled={disabled}
+          className="min-w-0 justify-center gap-1 rounded-xl px-2 py-2 text-xs font-medium data-[state=on]:border data-[state=on]:border-border data-[state=on]:bg-background data-[state=on]:shadow-sm sm:text-sm"
         >
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
             <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
           </svg>
-          URL
+          <span className="truncate">URL</span>
         </ToggleGroupItem>
         <ToggleGroupItem
           value="images"
-          className="gap-2 rounded-md px-5 py-2 data-[state=on]:border data-[state=on]:border-border data-[state=on]:bg-card"
+          disabled={disabled}
+          className="min-w-0 justify-center gap-1 rounded-xl px-2 py-2 text-xs font-medium data-[state=on]:border data-[state=on]:border-border data-[state=on]:bg-background data-[state=on]:shadow-sm sm:text-sm"
         >
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
             <circle cx="9" cy="9" r="2" />
             <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
           </svg>
-          Images
+          <span className="truncate">Images</span>
+        </ToggleGroupItem>
+        <ToggleGroupItem
+          value="text"
+          disabled={disabled}
+          className="min-w-0 justify-center gap-1 rounded-xl px-2 py-2 text-xs font-medium data-[state=on]:border data-[state=on]:border-border data-[state=on]:bg-background data-[state=on]:shadow-sm sm:text-sm"
+        >
+          <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 6h16" />
+            <path d="M4 12h16" />
+            <path d="M4 18h10" />
+          </svg>
+          <span className="truncate">Text</span>
         </ToggleGroupItem>
       </ToggleGroup>
 
       {tab === "url" && (
         <form onSubmit={handleUrlSubmit} className="flex w-full max-w-sm flex-col gap-6">
-          <Input
-            type="url"
-            placeholder="https://example.com/recipe..."
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            className="h-14 bg-card text-base"
-          />
-          <Button type="submit" size="lg" className="h-14 text-base font-semibold" disabled={!url.trim()}>
+          <div className="flex flex-col gap-2">
+            <label htmlFor="recipe-url" className="text-sm font-medium text-foreground">
+              Recipe page, YouTube, or Instagram URL
+            </label>
+            <Input
+              id="recipe-url"
+              type="url"
+              placeholder="Recipe page, YouTube, or Instagram link"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              aria-describedby="recipe-url-help"
+              className="h-14 bg-card text-base"
+              disabled={disabled}
+            />
+            <p id="recipe-url-help" className="text-sm leading-6 text-muted-foreground">
+              Paste a recipe page, YouTube video, or Instagram post/Reel URL.
+            </p>
+          </div>
+          <Button type="submit" size="lg" className="h-14 text-base font-semibold" disabled={disabled || !url.trim()}>
             Continue
           </Button>
         </form>
@@ -160,7 +208,8 @@ export function ImportForm({
             <button
               type="button"
               onClick={() => cameraRef.current?.click()}
-              className="flex h-28 flex-col items-center justify-center gap-2 rounded-lg bg-card text-sm text-card-foreground"
+              className="flex h-28 flex-col items-center justify-center gap-2 rounded-lg bg-card text-sm text-card-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={disabled}
             >
               <svg className="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
@@ -171,7 +220,8 @@ export function ImportForm({
             <button
               type="button"
               onClick={() => galleryRef.current?.click()}
-              className="flex h-28 flex-col items-center justify-center gap-2 rounded-lg bg-card text-sm text-card-foreground"
+              className="flex h-28 flex-col items-center justify-center gap-2 rounded-lg bg-card text-sm text-card-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={disabled}
             >
               <svg className="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
@@ -189,6 +239,7 @@ export function ImportForm({
             capture="environment"
             className="hidden"
             onChange={(e) => addFiles(e.currentTarget)}
+            disabled={disabled}
           />
           <input
             ref={galleryRef}
@@ -197,6 +248,7 @@ export function ImportForm({
             multiple
             className="hidden"
             onChange={(e) => addFiles(e.currentTarget)}
+            disabled={disabled}
           />
 
           {images.length > 0 && (
@@ -211,7 +263,8 @@ export function ImportForm({
                   <button
                     type="button"
                     onClick={() => removeImage(i)}
-                    className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs text-destructive-foreground"
+                    className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs text-destructive-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={disabled}
                   >
                     &times;
                   </button>
@@ -224,7 +277,56 @@ export function ImportForm({
             type="submit"
             size="lg"
             className="h-14 text-base font-semibold"
-            disabled={images.length === 0}
+            disabled={disabled || images.length === 0}
+          >
+            Continue
+          </Button>
+        </form>
+      )}
+
+      {tab === "text" && (
+        <form onSubmit={handleTextSubmit} className="flex w-full max-w-sm flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <textarea
+              id="recipe-text"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="Paste the recipe here..."
+              className="min-h-48 w-full resize-y rounded-xl border border-border bg-card px-4 py-3 text-base leading-6 shadow-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+              aria-describedby="recipe-text-help recipe-text-count"
+              disabled={disabled}
+              spellCheck={true}
+            />
+            <p id="recipe-text-help" className="text-sm leading-6 text-muted-foreground">
+              Paste the recipe text directly. It stays only in this screen until you continue.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span
+              id="recipe-text-count"
+              className={textOverLimit ? "text-destructive" : "text-muted-foreground"}
+            >
+              {textCount.toLocaleString()} / {MAX_SOURCE_TEXT_CHARS.toLocaleString()} characters
+            </span>
+            <span
+              className={
+                textOverLimit
+                  ? "text-destructive"
+                  : textTrimmed.length === 0
+                    ? "text-destructive"
+                    : "text-muted-foreground"
+              }
+            >
+              {textOverLimit ? "Over limit" : textTrimmed.length === 0 ? "Required" : "Ready"}
+            </span>
+          </div>
+
+          <Button
+            type="submit"
+            size="lg"
+            className="h-14 text-base font-semibold"
+            disabled={!textCanSubmit}
           >
             Continue
           </Button>

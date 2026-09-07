@@ -1,11 +1,15 @@
 """URL fetching and recipe scraping with recipe-scrapers + trafilatura fallback."""
 
 import logging
+from urllib.parse import urljoin
 
 import httpx
 from recipe_scrapers import scrape_html
 
 import trafilatura
+
+from .source_errors import SourceError
+from .url_safety import ensure_public_destination, validate_source_url
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +19,8 @@ _USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/131.0.0.0 Safari/537.36"
 )
+
+MAX_REDIRECTS = 5
 
 
 def scrape_url(url: str) -> dict:
@@ -27,7 +33,7 @@ def scrape_url(url: str) -> dict:
     """
     with httpx.Client(
         timeout=_TIMEOUT,
-        follow_redirects=True,
+        follow_redirects=False,
         headers={"User-Agent": _USER_AGENT},
     ) as client:
         html = _fetch_html(client, url)
@@ -52,10 +58,54 @@ def scrape_url(url: str) -> dict:
 
 
 def _fetch_html(client: httpx.Client, url: str) -> str:
-    """Fetch HTML content from a URL."""
-    response = client.get(url)
-    response.raise_for_status()
-    return response.text
+    """Fetch HTML after validating each resolved destination and redirect."""
+    current_url = validate_source_url(url)
+    visited_urls = {current_url.url}
+    redirects = 0
+
+    while True:
+        ensure_public_destination(current_url)
+        try:
+            response = client.get(current_url.url)
+        except httpx.HTTPError as error:
+            logger.warning("Recipe page fetch failed for %s", current_url.url, exc_info=True)
+            raise SourceError(
+                "source_fetch_failed",
+                "The recipe page could not be fetched.",
+                502,
+            ) from error
+
+        if not response.is_redirect:
+            try:
+                response.raise_for_status()
+            except httpx.HTTPError as error:
+                logger.warning("Recipe page fetch failed for %s", current_url.url, exc_info=True)
+                raise SourceError(
+                    "source_fetch_failed",
+                    "The recipe page could not be fetched.",
+                    502,
+                ) from error
+            return response.text
+
+        location = response.headers.get("location")
+        if not location:
+            raise SourceError(
+                "source_fetch_failed",
+                "The recipe page could not be fetched.",
+                502,
+            )
+
+        next_url = validate_source_url(urljoin(current_url.url, location))
+        redirects += 1
+        if redirects > MAX_REDIRECTS or next_url.url in visited_urls:
+            raise SourceError(
+                "source_fetch_failed",
+                "The recipe page could not be fetched.",
+                502,
+            )
+
+        visited_urls.add(next_url.url)
+        current_url = next_url
 
 
 def _extract_structured(html: str, url: str) -> dict:

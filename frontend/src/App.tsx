@@ -1,12 +1,59 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Toaster, toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Login } from "./components/Login";
 import { ImportForm } from "./components/ImportForm";
 import { EditRecipe } from "./components/EditRecipe";
+import { RecipeSelection } from "./components/RecipeSelection";
 import { StatusBar } from "./components/StatusBar";
 import { Settings } from "./components/Settings";
 import { useImport } from "./hooks/useImport";
+import { clearLegacyApiCache } from "./api";
+
+void clearLegacyApiCache().catch(() => {});
+
+interface InitialLocation {
+  authed: boolean;
+  sharedUrl: string;
+}
+
+function initializeLocation(): InitialLocation {
+  const cleanUrl = new URL(window.location.href);
+  const fragmentParams = new URLSearchParams(cleanUrl.hash.slice(1));
+  const hasToken = fragmentParams.has("token");
+  const token = fragmentParams.get("token");
+
+  if (token) {
+    localStorage.setItem("jwt_token", token);
+  }
+  if (hasToken) {
+    fragmentParams.delete("token");
+    const remainingFragment = fragmentParams.toString();
+    cleanUrl.hash = remainingFragment ? `#${remainingFragment}` : "";
+  }
+
+  const candidate =
+    cleanUrl.searchParams.get("url") ||
+    cleanUrl.searchParams.get("text") ||
+    "";
+  const sharedUrl = candidate.startsWith("http")
+    ? candidate
+    : candidate.match(/https?:\/\/\S+/)?.[0] || "";
+
+  if (sharedUrl) {
+    cleanUrl.searchParams.delete("url");
+    cleanUrl.searchParams.delete("text");
+    cleanUrl.searchParams.delete("title");
+  }
+  if (hasToken || sharedUrl) {
+    window.history.replaceState({}, "", cleanUrl.toString());
+  }
+
+  return {
+    authed: !!localStorage.getItem("jwt_token"),
+    sharedUrl,
+  };
+}
 
 function GearIcon({ className }: { className?: string }) {
   return (
@@ -27,38 +74,27 @@ function GearIcon({ className }: { className?: string }) {
 }
 
 function App() {
-  const [authed, setAuthed] = useState(() => !!localStorage.getItem("jwt_token"));
+  const [{ authed, sharedUrl }] = useState(initializeLocation);
   const [showSettings, setShowSettings] = useState(false);
-  const { state, recipe, error, submitUrl, submitImages, sync, reset } = useImport();
-
-  // Read shared URL from Web Share Target (/share?url=...) or OAuth callback (?token=...)
-  const [sharedUrl] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    const candidate = params.get("url") || params.get("text") || "";
-    if (candidate.startsWith("http")) return candidate;
-    const urlMatch = candidate.match(/https?:\/\/\S+/);
-    return urlMatch ? urlMatch[0] : "";
-  });
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get("token");
-    const cleanUrl = new URL(window.location.href);
-
-    if (token) {
-      localStorage.setItem("jwt_token", token);
-      cleanUrl.searchParams.delete("token");
-      setAuthed(true);
-    }
-    if (sharedUrl) {
-      cleanUrl.searchParams.delete("url");
-      cleanUrl.searchParams.delete("text");
-      cleanUrl.searchParams.delete("title");
-    }
-    if (token || sharedUrl) {
-      window.history.replaceState({}, "", cleanUrl.toString());
-    }
-  }, [sharedUrl]);
+  const {
+    state,
+    importedRecipes,
+    selectedIndices,
+    recipe,
+    queueIndex,
+    completedCount,
+    totalToSync,
+    error,
+    submitUrl,
+    submitImages,
+    submitText,
+    toggleSelection,
+    selectAll,
+    clearSelection,
+    confirmSelection,
+    sync,
+    reset,
+  } = useImport();
 
   if (!authed) {
     return <Login />;
@@ -68,7 +104,9 @@ function App() {
     return <Settings onBack={() => setShowSettings(false)} />;
   }
 
-  const showGear = state === "idle" || state === "preview";
+  const showGear =
+    state === "idle" || state === "selecting" || state === "preview";
+  const isImporting = state === "loading";
 
   return (
     <div className="mx-auto min-h-dvh max-w-md pb-8">
@@ -88,7 +126,11 @@ function App() {
 
       {state === "success" && (
         <div className="flex min-h-dvh flex-col items-center justify-center gap-6 px-6">
-          <StatusBar state={state} error={error} />
+          <StatusBar
+            state={state}
+            error={error}
+            completedCount={completedCount}
+          />
           <Button onClick={reset} size="lg" className="h-14 w-full max-w-sm text-base font-semibold">
             New Import
           </Button>
@@ -109,7 +151,13 @@ function App() {
 
       {(state === "idle" || state === "loading") && (
         <>
-          <ImportForm onSubmitUrl={submitUrl} onSubmitImages={submitImages} initialUrl={sharedUrl} />
+          <ImportForm
+            onSubmitUrl={submitUrl}
+            onSubmitImages={submitImages}
+            onSubmitText={submitText}
+            initialUrl={sharedUrl}
+            disabled={isImporting}
+          />
           {state === "loading" && (
             <div className="mt-6 px-6">
               <StatusBar state={state} error={error} />
@@ -118,20 +166,38 @@ function App() {
         </>
       )}
 
+      {state === "selecting" && (
+        <RecipeSelection
+          recipes={importedRecipes}
+          selectedIndices={selectedIndices}
+          onToggle={toggleSelection}
+          onSelectAll={selectAll}
+          onClear={clearSelection}
+          onContinue={confirmSelection}
+        />
+      )}
+
       {(state === "preview" || state === "syncing") && recipe && (
         <>
           <EditRecipe
+            key={queueIndex}
+            position={queueIndex + 1}
+            total={totalToSync}
             recipe={recipe}
-            onSync={(overrides) => {
-              sync(overrides).then(() => {
+            onSync={async (overrides) => {
+              if (await sync(overrides)) {
                 toast.success("Recipe sent to Paprika!");
-              });
+              }
             }}
             syncing={state === "syncing"}
           />
-          {state === "syncing" && (
+          {(state === "syncing" || error) && (
             <div className="mt-6 px-6">
-              <StatusBar state={state} error={error} />
+              <StatusBar
+                state={state}
+                error={error}
+                completedCount={completedCount}
+              />
             </div>
           )}
         </>

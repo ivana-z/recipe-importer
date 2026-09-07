@@ -14,6 +14,8 @@ _GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 
 _JWT_ALGORITHM = "HS256"
 _TOKEN_LIFETIME_DAYS = 30
+_OAUTH_STATE_LIFETIME_MINUTES = 10
+_OAUTH_STATE_PURPOSE = "google_oauth_state"
 
 
 def _client_id() -> str:
@@ -54,6 +56,28 @@ def _fernet() -> Fernet:
 # ---------------------------------------------------------------------------
 # OAuth helpers
 # ---------------------------------------------------------------------------
+def create_oauth_state_cookie(state: str) -> str:
+    """Sign a short-lived OAuth state value for storage in a cookie."""
+    payload = {
+        "state": state,
+        "purpose": _OAUTH_STATE_PURPOSE,
+        "exp": datetime.now(timezone.utc)
+        + timedelta(minutes=_OAUTH_STATE_LIFETIME_MINUTES),
+    }
+    return jwt.encode(payload, _jwt_secret(), algorithm=_JWT_ALGORITHM)
+
+
+def decode_oauth_state_cookie(cookie: str) -> str:
+    """Validate a state cookie and return its random state value."""
+    payload = jwt.decode(cookie, _jwt_secret(), algorithms=[_JWT_ALGORITHM])
+    if payload.get("purpose") != _OAUTH_STATE_PURPOSE:
+        raise jwt.InvalidTokenError("Invalid OAuth state purpose")
+    state = payload.get("state")
+    if not isinstance(state, str) or not state:
+        raise jwt.InvalidTokenError("Missing OAuth state")
+    return state
+
+
 
 def get_google_auth_url() -> tuple[str, str]:
     """Return (auth_url, state) for the Google OAuth2 consent page."""

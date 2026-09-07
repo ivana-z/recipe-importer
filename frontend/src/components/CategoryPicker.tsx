@@ -14,7 +14,7 @@ import type { CategoryItem } from "../types";
 export interface SelectedCategory {
   /** Display label shown as chip, e.g. "Dinner > Chicken" */
   label: string;
-  /** Actual Paprika category name, e.g. "Chicken" */
+  /** Paprika category UID submitted to the sync endpoint */
   value: string;
 }
 
@@ -30,30 +30,32 @@ export function CategoryPicker({
   alreadySelected: SelectedCategory[];
 }) {
   const [categories, setCategories] = useState<CategoryItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [drillInto, setDrillInto] = useState<CategoryItem | null>(null);
-  const [selected, setSelected] = useState<Map<string, SelectedCategory>>(new Map());
-
-  // Seed with already-selected categories when opening
-  useEffect(() => {
-    if (open) {
-      const map = new Map<string, SelectedCategory>();
-      for (const cat of alreadySelected) {
-        map.set(cat.label, cat);
-      }
-      setSelected(map);
-    }
-  }, [open, alreadySelected]);
+  const [selected, setSelected] = useState<Map<string, SelectedCategory>>(
+    () => new Map(alreadySelected.map((category) => [category.label, category]))
+  );
 
   useEffect(() => {
-    if (open && categories.length === 0) {
-      setLoading(true);
-      fetchCategories()
-        .then((res) => setCategories(res.categories))
-        .catch(() => {})
-        .finally(() => setLoading(false));
-    }
-  }, [open, categories.length]);
+    let cancelled = false;
+
+    fetchCategories()
+      .then((res) => {
+        if (!cancelled) {
+          setCategories(res.categories);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function toggleItem(label: string, value: string) {
     setSelected((prev) => {
