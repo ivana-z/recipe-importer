@@ -19,10 +19,13 @@ from .url_safety import ensure_public_destination, validate_source_url
 logger = logging.getLogger(__name__)
 
 MAX_CAPTION_RESPONSE_BYTES = 2_000_000
-MAX_CAPTION_REDIRECTS = 5
+MAX_YOUTUBE_PAGE_RESPONSE_BYTES = 4_000_000
+MAX_SOCIAL_REDIRECTS = 5
 SOCIAL_EXTRACTION_TIMEOUT_SECONDS = 30.0
 _SOCIAL_HOSTS = ("youtube.com", "youtube-nocookie.com", "youtu.be", "instagram.com")
 
+_YOUTUBE_PLAYER_RESPONSE_RE = re.compile(r"(?:var\s+)?ytInitialPlayerResponse\s*=\s*")
+_YOUTUBE_VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{6,64}$")
 _YOUTUBE_SUPPORTED_EXTS = {"json3", "vtt", "srv3", "srv2", "srv1", "ttml", "srt", "ass", "lrc", "txt"}
 _YOUTUBE_FORMAT_RANK = {"json3": 0, "vtt": 1}
 
@@ -180,8 +183,84 @@ def _extract_youtube_info(url: str) -> dict:
         "no_warnings": True,
         "socket_timeout": SOCIAL_EXTRACTION_TIMEOUT_SECONDS,
     }
-    with yt_dlp.YoutubeDL(options) as ydl:
-        return ydl.extract_info(url, download=False)
+    try:
+        with yt_dlp.YoutubeDL(options) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except yt_dlp.utils.DownloadError:
+        fallback = _try_extract_youtube_page_info(url)
+        if _clean_text(fallback.get("description")):
+            return fallback
+        raise
+
+    if _clean_text(info.get("description")):
+        return info
+
+    fallback = _try_extract_youtube_page_info(url)
+    if not fallback:
+        return info
+
+    merged = dict(info)
+    for key in ("title", "description", "uploader"):
+        if not _clean_text(merged.get(key)) and _clean_text(fallback.get(key)):
+            merged[key] = fallback[key]
+    return merged
+
+
+def _try_extract_youtube_page_info(url: str) -> dict:
+    try:
+        return _parse_youtube_page_info(_fetch_youtube_page(url))
+    except Exception:
+        logger.debug("YouTube page metadata fallback failed for %s", url, exc_info=True)
+        return {}
+
+
+def _fetch_youtube_page(url: str) -> str:
+    video_id = _youtube_video_id(url)
+    if not video_id:
+        return ""
+    canonical_url = f"https://www.youtube.com/watch?v={video_id}"
+    return _fetch_public_text(
+        canonical_url,
+        max_bytes=MAX_YOUTUBE_PAGE_RESPONSE_BYTES,
+        too_large_message=(
+            f"YouTube page response is limited to {MAX_YOUTUBE_PAGE_RESPONSE_BYTES} bytes."
+        ),
+        redirect_message="The YouTube page redirected too many times.",
+    )
+
+
+def _parse_youtube_page_info(payload: str) -> dict:
+    match = _YOUTUBE_PLAYER_RESPONSE_RE.search(payload)
+    if match is None:
+        return {}
+
+    player_response, _ = json.JSONDecoder().raw_decode(payload, match.end())
+    video_details = player_response.get("videoDetails") or {}
+    if not isinstance(video_details, dict):
+        return {}
+
+    return {
+        "title": _clean_text(video_details.get("title")),
+        "description": _clean_text(video_details.get("shortDescription")),
+        "uploader": _clean_text(video_details.get("author")),
+    }
+
+
+def _youtube_video_id(url: str) -> str:
+    parsed = urlsplit(url)
+    host = (parsed.hostname or "").lower()
+    parts = [part for part in parsed.path.split("/") if part]
+
+    if host == "youtu.be" and len(parts) == 1:
+        candidate = parts[0]
+    elif parsed.path.rstrip("/") == "/watch":
+        candidate = parse_qs(parsed.query).get("v", [""])[0]
+    elif len(parts) >= 2 and parts[0] in {"shorts", "embed", "live"}:
+        candidate = parts[1]
+    else:
+        return ""
+
+    return candidate if _YOUTUBE_VIDEO_ID_RE.fullmatch(candidate) else ""
 
 
 def _extract_instagram_info(url: str) -> dict:
@@ -289,6 +368,23 @@ def _caption_format_rank(ext: str | None) -> int:
 
 
 def _fetch_caption_payload(url: str) -> str:
+    return _fetch_public_text(
+        url,
+        max_bytes=MAX_CAPTION_RESPONSE_BYTES,
+        too_large_message=(
+            f"Caption response is limited to {MAX_CAPTION_RESPONSE_BYTES} bytes."
+        ),
+        redirect_message="The YouTube captions redirected too many times.",
+    )
+
+
+def _fetch_public_text(
+    url: str,
+    *,
+    max_bytes: int,
+    too_large_message: str,
+    redirect_message: str,
+) -> str:
     timeout = httpx.Timeout(SOCIAL_EXTRACTION_TIMEOUT_SECONDS)
     headers = {
         "User-Agent": (
@@ -303,16 +399,16 @@ def _fetch_caption_payload(url: str) -> str:
         follow_redirects=False,
         headers=headers,
     ) as client:
-        for redirect_count in range(MAX_CAPTION_REDIRECTS + 1):
+        for redirect_count in range(MAX_SOCIAL_REDIRECTS + 1):
             validated = validate_source_url(current_url)
             ensure_public_destination(validated)
             with client.stream("GET", validated.url) as response:
                 if response.status_code in {301, 302, 303, 307, 308}:
                     location = response.headers.get("location")
-                    if not location or redirect_count == MAX_CAPTION_REDIRECTS:
+                    if not location or redirect_count == MAX_SOCIAL_REDIRECTS:
                         raise SourceError(
                             "source_fetch_failed",
-                            "The YouTube captions redirected too many times.",
+                            redirect_message,
                             502,
                         )
                     current_url = urljoin(validated.url, location)
@@ -321,10 +417,10 @@ def _fetch_caption_payload(url: str) -> str:
                 response.raise_for_status()
                 if response.headers.get("content-length"):
                     try:
-                        if int(response.headers["content-length"]) > MAX_CAPTION_RESPONSE_BYTES:
+                        if int(response.headers["content-length"]) > max_bytes:
                             raise SourceError(
                                 "source_too_large",
-                                f"Caption response is limited to {MAX_CAPTION_RESPONSE_BYTES} bytes.",
+                                too_large_message,
                                 413,
                             )
                     except ValueError:
@@ -334,17 +430,17 @@ def _fetch_caption_payload(url: str) -> str:
                 total = 0
                 for chunk in response.iter_bytes():
                     total += len(chunk)
-                    if total > MAX_CAPTION_RESPONSE_BYTES:
+                    if total > max_bytes:
                         raise SourceError(
                             "source_too_large",
-                            f"Caption response is limited to {MAX_CAPTION_RESPONSE_BYTES} bytes.",
+                            too_large_message,
                             413,
                         )
                     chunks.append(chunk)
 
                 return b"".join(chunks).decode("utf-8", errors="replace")
 
-    raise RuntimeError("Caption redirect loop exited unexpectedly")
+    raise RuntimeError("Social source redirect loop exited unexpectedly")
 
 
 def _parse_json3_captions(payload: str) -> str:

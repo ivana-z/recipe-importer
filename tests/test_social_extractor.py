@@ -217,6 +217,34 @@ def test_youtube_metadata_extraction_uses_only_metadata_and_no_media_download(
     assert recipe["name"] == recipe_result["name"]
 
 
+def test_youtube_page_fallback_recovers_description_when_extractor_omits_it(
+    monkeypatch: pytest.MonkeyPatch,
+    youtube_info,
+    fake_youtube_extractor,
+    capture_formatter,
+):
+    youtube_info["description"] = ""
+    page = """
+        <script>
+        var ytInitialPlayerResponse = {
+            "videoDetails": {
+                "title": "Summer Soup",
+                "shortDescription": "1 carrot\\nMix &amp; serve.",
+                "author": "Fallback Chef"
+            }
+        };
+        </script>
+    """
+    monkeypatch.setattr(social_extractor, "_fetch_youtube_page", lambda _url: page)
+
+    result = social_extractor.import_social_url(YOUTUBE_URL, "youtube")
+
+    assert result["recipes"][0]["source"] == "Chef Channel"
+    assert capture_formatter["text"] == (
+        "Title:\nSummer Soup\n\nDescription:\n1 carrot\nMix & serve."
+    )
+
+
 def test_social_source_metadata_applies_to_every_formatted_recipe(
     monkeypatch: pytest.MonkeyPatch,
     youtube_info,
