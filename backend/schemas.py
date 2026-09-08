@@ -74,3 +74,8 @@ class CredentialsRequest(BaseModel):
 class CredentialsStatus(BaseModel):
     has_credentials: bool
     paprika_email: str = ""
+
+
+class AppVersion(BaseModel):
+    message: str
+    commit_sha: str = ""

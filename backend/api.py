@@ -1,6 +1,7 @@
 """API route definitions."""
 
 import logging
+import os
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
@@ -10,6 +11,7 @@ from .database import get_db
 from .models import User
 from .oauth import encrypt_password
 from .schemas import (
+    AppVersion,
     CategoriesResponse,
     CategoryItem,
     CredentialsRequest,
@@ -35,6 +37,18 @@ from .source_errors import SourceError
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
+
+
+@router.get("/version", response_model=AppVersion)
+def get_app_version(_current_user: User = Depends(get_current_user)):
+    """Return the Git revision that produced the running deployment."""
+    raw_message = os.environ.get("RAILWAY_GIT_COMMIT_MESSAGE", "")
+    message = next(
+        (line.strip() for line in raw_message.splitlines() if line.strip()),
+        "Development build",
+    )
+    commit_sha = os.environ.get("RAILWAY_GIT_COMMIT_SHA", "").strip()[:7]
+    return AppVersion(message=message, commit_sha=commit_sha)
 
 
 @router.post("/import/url", response_model=ImportResult)

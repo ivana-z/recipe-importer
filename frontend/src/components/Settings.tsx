@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  type AppVersion,
   clearAuthSession,
+  fetchAppVersion,
   fetchCredentialStatus,
   saveCredentials,
 } from "../api";
@@ -18,6 +20,7 @@ export function Settings({ onBack }: SettingsProps) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [appVersion, setAppVersion] = useState<AppVersion | null>(null);
 
   useEffect(() => {
     fetchCredentialStatus()
@@ -29,6 +32,11 @@ export function Settings({ onBack }: SettingsProps) {
       })
       .catch(() => {
         // Non-fatal: just show empty form
+      });
+    fetchAppVersion()
+      .then(setAppVersion)
+      .catch(() => {
+        setAppVersion({ message: "Version unavailable", commit_sha: "" });
       });
   }, []);
 
@@ -110,16 +118,42 @@ export function Settings({ onBack }: SettingsProps) {
         </form>
       </section>
 
-      <section className="mt-auto">
-        <Button
-          variant="outline"
-          size="lg"
-          className="h-12 w-full font-semibold text-destructive hover:text-destructive"
-          onClick={handleLogout}
+      <div className="mt-auto flex flex-col gap-6">
+        <section
+          aria-labelledby="app-version-heading"
+          className="border-t border-border/70 pt-5"
         >
-          Sign Out
-        </Button>
-      </section>
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h2
+                id="app-version-heading"
+                className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground"
+              >
+                App version
+              </h2>
+              <p className="mt-2 text-sm leading-relaxed text-foreground">
+                {appVersion?.message ?? "Loading deployment…"}
+              </p>
+            </div>
+            {appVersion?.commit_sha && (
+              <code className="shrink-0 rounded border border-primary/20 bg-primary/10 px-2 py-1 font-mono text-[11px] text-primary">
+                {appVersion.commit_sha}
+              </code>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <Button
+            variant="outline"
+            size="lg"
+            className="h-12 w-full font-semibold text-destructive hover:text-destructive"
+            onClick={handleLogout}
+          >
+            Sign Out
+          </Button>
+        </section>
+      </div>
     </div>
   );
 }

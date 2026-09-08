@@ -5,6 +5,11 @@ export interface CredentialsStatus {
   paprika_email: string;
 }
 
+export interface AppVersion {
+  message: string;
+  commit_sha: string;
+}
+
 export interface ApiErrorDetail {
   code: string;
   message: string;
@@ -147,6 +152,10 @@ export async function syncRecipe(recipe: Recipe & { categories: string[] }): Pro
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(recipe),
   });
+}
+
+export async function fetchAppVersion(): Promise<AppVersion> {
+  return apiFetch<AppVersion>("/api/version");
 }
 
 export async function fetchCredentialStatus(): Promise<CredentialsStatus> {
