@@ -48,6 +48,11 @@ If only Fahrenheit is given, convert to Celsius.
 
 - Structure into chapters with bold titles (e.g. **Soaking**, **Preparation**, \
 **Cooking**)
+- Within each chapter, divide the directions into short, sequential, action-focused \
+steps like a recipe card
+- Write each step as its own paragraph, separated from the next step by a blank line. \
+A step may contain multiple closely related sentences; never collapse all of a \
+chapter's instructions into one paragraph
 - Convert any amounts/temperatures in directions using the same rules as ingredients
 - Bold each ingredient name when it is first mentioned in a step, and include its \
 quantity (e.g. "Add **200g flour** and mix")
@@ -75,8 +80,10 @@ _RULES_REMINDER = (
     "- Units: convert butter to grams; pourable liquids cups→ml; all other imperial "
     "(oz, lb, fl oz, pints, quarts, gallons) to metric (g/ml under 1kg/L, kg/L over); "
     "inches to mm/cm; Fahrenheit to Celsius only\n"
-    "- Directions: use bold chapter titles (e.g. **Preparation**, **Cooking**); bold "
-    "each ingredient name on first mention with its quantity\n"
+    "- Directions: use bold chapter titles; divide each chapter into short, sequential, "
+    "action-focused steps; put each step in its own paragraph separated by a blank line; "
+    "never collapse a chapter into one paragraph; bold each ingredient name on first "
+    "mention with its quantity\n"
     "- Return every distinct complete recipe in the required recipes/has_more JSON "
     "envelope; never merge or silently truncate recipes; no markdown fencing or extra text"
 )
