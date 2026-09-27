@@ -20,7 +20,7 @@ from .source_errors import SourceError
 
 logger = logging.getLogger(__name__)
 
-MODEL = "gemini-2.5-flash"
+MODEL = "gemini-3.8-flash"
 MAX_RETRIES = 3
 BASE_DELAY = 2  # seconds
 MAX_SOURCE_TEXT_CHARS = 100_000

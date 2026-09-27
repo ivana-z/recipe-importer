@@ -7,6 +7,12 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
+# Pin the psycopg (v3) driver so the URL works on any SQLAlchemy version.
+for _prefix in ("postgresql://", "postgres://"):
+    if DATABASE_URL.startswith(_prefix):
+        DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL[len(_prefix):]
+        break
+
 engine = create_engine(DATABASE_URL) if DATABASE_URL else None  # type: ignore[arg-type]
 SessionLocal: sessionmaker[Session] | None = (
     sessionmaker(bind=engine) if engine else None

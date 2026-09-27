@@ -91,7 +91,7 @@ frontend/              # React + Vite + TypeScript + shadcn/ui PWA
 The CLI remains separate and continues to export `.paprikarecipe` files through `src/recipe_importer`.
 
 ### Key details
-- Gemini model: `gemini-2.5-flash`
+- Gemini model: `gemini-3.8-flash`
 - Output: `~/paprika_recipes/` (default), override with `--output`
 - Duplicate handling: auto-rename with `-2`, `-3` suffix
 - API retries: 3 attempts with exponential backoff
