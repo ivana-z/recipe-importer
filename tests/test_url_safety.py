@@ -165,6 +165,47 @@ def test_upstream_fetch_failure_is_safe_and_structured(monkeypatch: pytest.Monke
     assert raised.value.status_code == 502
 
 
+def test_forbidden_response_is_retried_once_with_fallback_user_agent(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr("backend.url_safety.socket.getaddrinfo", _public_dns)
+    user_agents: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        user_agents.append(request.headers["user-agent"])
+        if request.headers["user-agent"] == scraper._FALLBACK_USER_AGENT:
+            return httpx.Response(200, text="<html>recipe</html>", request=request)
+        return httpx.Response(403, text="challenge", request=request)
+
+    with httpx.Client(
+        transport=httpx.MockTransport(handler),
+        headers={"User-Agent": scraper._USER_AGENT},
+    ) as client:
+        assert scraper._fetch_html(client, "https://recipes.example.test/dinner") == "<html>recipe</html>"
+
+    assert user_agents == [scraper._USER_AGENT, scraper._FALLBACK_USER_AGENT]
+
+
+def test_persistent_forbidden_response_fails_after_one_retry(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("backend.url_safety.socket.getaddrinfo", _public_dns)
+    requests: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(str(request.url))
+        return httpx.Response(403, text="challenge", request=request)
+
+    with _client(handler) as client:
+        with pytest.raises(SourceError) as raised:
+            scraper._fetch_html(client, "https://recipes.example.test/dinner")
+
+    assert len(requests) == 2
+    assert raised.value.detail == {
+        "code": "source_fetch_failed",
+        "message": "The recipe page could not be fetched.",
+    }
+    assert raised.value.status_code == 502
+
+
 def test_scrape_url_preserves_structured_trafilatura_and_raw_html_fallbacks(
     monkeypatch: pytest.MonkeyPatch,
 ):

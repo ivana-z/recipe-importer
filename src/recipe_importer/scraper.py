@@ -15,6 +15,9 @@ _USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/131.0.0.0 Safari/537.36"
 )
+# Some bot protection rejects a browser User-Agent sent by a non-browser client
+# but accepts an honest one, so a 403 is retried once with this.
+_FALLBACK_USER_AGENT = "Mozilla/5.0 (compatible; recipe-importer/1.0)"
 
 
 def scrape_url(url: str) -> dict:
@@ -54,6 +57,9 @@ def scrape_url(url: str) -> dict:
 def _fetch_html(client: httpx.Client, url: str) -> str:
     """Fetch HTML content from a URL."""
     response = client.get(url)
+    if response.status_code == 403:
+        logger.info("Retrying %s with fallback User-Agent after 403", url)
+        response = client.get(url, headers={"User-Agent": _FALLBACK_USER_AGENT})
     response.raise_for_status()
     return response.text
 

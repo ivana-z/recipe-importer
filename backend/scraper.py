@@ -19,6 +19,9 @@ _USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/131.0.0.0 Safari/537.36"
 )
+# Some bot protection rejects a browser User-Agent sent by a non-browser client
+# but accepts an honest one, so a 403 is retried once with this.
+_FALLBACK_USER_AGENT = "Mozilla/5.0 (compatible; recipe-importer/1.0)"
 
 MAX_REDIRECTS = 5
 
@@ -62,11 +65,12 @@ def _fetch_html(client: httpx.Client, url: str) -> str:
     current_url = validate_source_url(url)
     visited_urls = {current_url.url}
     redirects = 0
+    headers: dict[str, str] = {}
 
     while True:
         ensure_public_destination(current_url)
         try:
-            response = client.get(current_url.url)
+            response = client.get(current_url.url, headers=headers)
         except httpx.HTTPError as error:
             logger.warning("Recipe page fetch failed for %s", current_url.url, exc_info=True)
             raise SourceError(
@@ -74,6 +78,11 @@ def _fetch_html(client: httpx.Client, url: str) -> str:
                 "The recipe page could not be fetched.",
                 502,
             ) from error
+
+        if response.status_code == 403 and not headers:
+            logger.info("Retrying %s with fallback User-Agent after 403", current_url.url)
+            headers = {"User-Agent": _FALLBACK_USER_AGENT}
+            continue
 
         if not response.is_redirect:
             try:
